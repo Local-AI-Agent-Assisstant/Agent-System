@@ -1,0 +1,4 @@
+MCP_server/written_files/
+__pycache__/
+*.pyc
+*.pyo

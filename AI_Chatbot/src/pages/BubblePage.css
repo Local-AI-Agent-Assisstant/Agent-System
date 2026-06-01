@@ -1,0 +1,206 @@
+/* BubblePage.css — Floating voice bubble window */
+/* IMPORTANT: All styles scoped via .bubble-page class added only in the bubble window. */
+
+/* ── Scoped reset ── */
+html.bubble-page,
+html.bubble-page body,
+html.bubble-page #root {
+  background: transparent !important;
+  overflow: hidden !important;
+  user-select: none;
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ── Root container & State Variables ── */
+.bubble-root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+
+  /* Default Purple (Idle/Thinking) */
+  --c1: #a78bfa;
+  --c2: #7c3aed;
+  --c3: #4c1d95;
+  --glow1: rgba(124, 58, 237, 0.8);
+  --glow2: rgba(124, 58, 237, 0.35);
+  --glow3: rgba(167, 139, 250, 0.15);
+}
+
+.bubble-root.dragging {
+  cursor: grabbing;
+}
+
+/* ── State Colors ── */
+.bubble-root.state-listening {
+  /* Cyan/Blue */
+  --c1: #7dd3fc;
+  --c2: #0284c7;
+  --c3: #075985;
+  --glow1: rgba(2, 132, 199, 0.8);
+  --glow2: rgba(2, 132, 199, 0.35);
+  --glow3: rgba(125, 211, 252, 0.15);
+}
+
+.bubble-root.state-speaking {
+  /* Green */
+  --c1: #86efac;
+  --c2: #16a34a;
+  --c3: #14532d;
+  --glow1: rgba(22, 163, 74, 0.8);
+  --glow2: rgba(22, 163, 74, 0.35);
+  --glow3: rgba(134, 239, 172, 0.15);
+}
+
+.bubble-root.state-speech_detected,
+.bubble-root.state-transcribing {
+  /* Orange */
+  --c1: #fcd34d;
+  --c2: #d97706;
+  --c3: #78350f;
+  --glow1: rgba(217, 119, 6, 0.8);
+  --glow2: rgba(217, 119, 6, 0.35);
+  --glow3: rgba(252, 211, 77, 0.15);
+}
+
+/* ── Float wrapper ── */
+.bubble-float {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  z-index: 2;
+  animation: orbFloat 4s ease-in-out infinite;
+}
+
+/* Stop float when dragging or in basket */
+.bubble-root.dragging .bubble-float,
+.bubble-float.in-basket {
+  animation: none;
+}
+
+@keyframes orbFloat {
+  0% { transform: translateY(-3px); }
+  50% { transform: translateY(3px); }
+  100% { transform: translateY(-3px); }
+}
+
+/* ── The Orb ── */
+.bubble-orb {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  /* Rich 3D Gradient based on state vars */
+  background: radial-gradient(
+    ellipse at 38% 28%,
+    var(--c1) 0%,
+    var(--c2) 42%,
+    var(--c3) 100%
+  );
+
+  box-shadow:
+    0 0 0 1px var(--glow3),
+    0 0 20px var(--glow1),
+    0 0 45px var(--glow2),
+    inset 0 -5px 14px rgba(0, 0, 0, 0.35),
+    inset 5px 5px 16px rgba(255, 255, 255, 0.2);
+
+  transition: all 0.35s ease;
+}
+
+/* When in basket zone, override colors to red */
+.bubble-orb.in-basket {
+  background: radial-gradient(
+    ellipse at 38% 28%,
+    #fca5a5 0%,
+    #ef4444 45%,
+    #991b1b 100%
+  ) !important;
+  box-shadow:
+    0 0 0 2px rgba(239, 68, 68, 0.4),
+    0 0 30px rgba(239, 68, 68, 1),
+    0 0 65px rgba(239, 68, 68, 0.45),
+    inset 0 -5px 14px rgba(0, 0, 0, 0.4),
+    inset 5px 5px 16px rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ── Inner glass shine ── */
+.bubble-shine {
+  position: absolute;
+  top: 11%;
+  left: 15%;
+  width: 36%;
+  height: 28%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.7) 0%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ── Big clear ✕ in basket state ── */
+.bubble-close-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: closePop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes closePop {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Outer Ring ── */
+.bubble-ring {
+  position: absolute;
+  width: 50px; /* fixed size, no scaling */
+  height: 50px;
+  border-radius: 50%;
+  border: 1.5px solid var(--glow2);
+  opacity: 0.5;
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+/* While speaking, animate the ring expanding */
+.bubble-root.state-speaking .bubble-ring {
+  animation: ringPulse 1.5s cubic-bezier(0.2, 0, 0.2, 1) infinite;
+}
+
+.bubble-ring.in-basket {
+  display: none;
+}
+
+@keyframes ringPulse {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
