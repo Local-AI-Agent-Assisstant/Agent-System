@@ -12,15 +12,35 @@ const FUNCTIONS = [
     },
     {
         name: "wifi status",
-        desc: "Show current wireless adapter and connection information.",
+        desc: "Show wireless adapter and Wi-Fi connection information.",
     },
     {
-        name: "system info",
-        desc: "Retrieve general Windows system information.",
+        name: "public ip",
+        desc: "Retrieve the current public IP address.",
+    },
+    {
+        name: "routes",
+        desc: "Display the local routing table and network routes.",
+    },
+    {
+        name: "arp table",
+        desc: "Show detected local network devices and ARP entries.",
+    },
+    {
+        name: "systeminfo",
+        desc: "Retrieve Windows system and hardware information.",
     },
     {
         name: "ping",
-        desc: "Test connectivity to a remote host.",
+        desc: "Test connectivity to a remote host or website.",
+    },
+    {
+        name: "ps adapters",
+        desc: "Display installed network adapters and interface details.",
+    },
+    {
+        name: "ps performance",
+        desc: "Retrieve basic CPU and memory performance statistics.",
     },
 ];
 
@@ -75,7 +95,7 @@ export default function SystemCommands() {
                 </div>
                 <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-neutral-100">System Commands</h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
-                    Access predefined system diagnostics, network tools, and device information directly through the AI assistant interface.
+                    Access predefined system diagnostics, network utilities, and device information directly through the assistant interface.
                 </p>
             </section>
 
@@ -95,7 +115,7 @@ export default function SystemCommands() {
             </section>
 
             <section>
-                <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Tool Functions</h2>
+                <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Available Commands</h2>
                 <div className="rounded-xl border border-zinc-200 dark:border-neutral-800 bg-zinc-100 dark:bg-neutral-800/30 overflow-hidden">
                     <div className="grid grid-cols-[1fr_2fr] text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-neutral-500 px-5 py-3 border-b border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
                         <span>Function</span><span className="pl-6">Description</span>
@@ -116,26 +136,6 @@ export default function SystemCommands() {
                     ))}
                 </div>
             </section>
-
-            {/* Interface Preview */}
-            <section className="space-y-3">
-                <div>
-                    <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-1">
-                        Interface Preview
-                    </h2>
-
-                    <p className="text-xs text-zinc-500 dark:text-neutral-500">
-                        Preview of system diagnostics, network information, and command confirmation inside the interface.
-                    </p>
-                </div>
-
-                <div className="rounded-xl border border-dashed border-zinc-300 dark:border-neutral-700 bg-white dark:bg-neutral-900/40 h-[320px] flex items-center justify-center">
-                    <p className="text-xs text-zinc-500 dark:text-neutral-600">
-                        Preview Placeholder
-                    </p>
-                </div>
-            </section>
-
 
             <section>
                 <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-2">Example Usage</h2>
@@ -168,8 +168,8 @@ export default function SystemCommands() {
             </section>
 
             <section className="pt-4 border-t border-zinc-200 dark:border-neutral-800">
-                <Link to="/docs/tools/write-files" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all">
-                    Next: File Management <ArrowRight size={14} />
+                <Link to="/docs/tools/web-search" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all">
+                    Next: Web Search <ArrowRight size={14} />
                 </Link>
             </section>
         </div>

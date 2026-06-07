@@ -1,0 +1,45 @@
+{
+  "contacts": [
+    {
+      "full_name": "Amro",
+      "aliases": [
+        "Amro"
+      ],
+      "emails": [],
+      "phones": [
+        {
+          "value": "05355830852",
+          "default": true
+        }
+      ],
+      "whatsapp": [
+        {
+          "value": "05355830852",
+          "default": true
+        },
+        {
+          "value": "Amro",
+          "default": false
+        }
+      ],
+      "notes": "",
+      "custom_fields": {},
+      "id": "contact_e866b84e"
+    },
+    {
+      "full_name": "Me",
+      "aliases": [],
+      "emails": [
+        {
+          "value": "bedohema00@gmail.com",
+          "default": true
+        }
+      ],
+      "phones": [],
+      "whatsapp": [],
+      "notes": "",
+      "custom_fields": {},
+      "id": "contact_a92cb021"
+    }
+  ]
+}

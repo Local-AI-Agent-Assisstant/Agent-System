@@ -7,9 +7,11 @@ function EmailPreviewModal({ show, draft, isDark, onClose, onSend }) {
 
     useEffect(() => {
         if (!draft) return;
-        setTo(draft.to || "");
-        setSubject(draft.subject || "");
-        setBody(draft.body || "");
+        setTimeout(() => {
+            setTo(draft.to || "");
+            setSubject(draft.subject || "");
+            setBody(draft.body || "");
+        }, 0);
     }, [draft]);
 
     if (!show) return null;

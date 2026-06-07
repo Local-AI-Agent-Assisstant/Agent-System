@@ -8,7 +8,7 @@ Responsible for safely executing one or more tool calls, including:
   - Routine injection (execute_routine)
   - Actual tool dispatch
 """
-import os
+
 import threading
 import uuid
 import json
@@ -45,7 +45,7 @@ def maybe_run_tool(
     Parameters
     ----------
     tool_call          : parsed tool-call dict from the model
-    email / password   : Gmail credentials forwarded to send_email_gmail
+    email / password   : Gmail credentials forwarded to send_email
     on_event           : SSE event callback (event_type, data)
     email_allowed      : whether the user explicitly requested an email action
     always_allow_tools : set of tool names that don't need a permission prompt
@@ -98,7 +98,7 @@ def maybe_run_tool(
         if tool_name == "deep_search" and "deep_search" not in enabled_skills:
             # quick internal mode
             if on_event:
-                on_event("tool", "quick_search")
+                on_event("tool", {"name": "quick_search", "args": {"query": args.get("query", "")}})
             
             call["tool"] = "quick_search"
             tool_name = "quick_search"
@@ -213,12 +213,18 @@ def maybe_run_tool(
             })
             continue
 
+        # Build a lightweight args preview (safe_args is defined later after the full sanitization)
+        _args_preview = {k: v for k, v in args.items() if not callable(v)} if isinstance(args, dict) else {}
+        # Mask large content fields so the reasoning panel stays readable
+        if "content" in _args_preview:
+            _args_preview["content"] = f"<{len(str(args.get('content', '')))} chars>"
+
         # Stream tool event to frontend for intermediate steps
         if on_event:
-            on_event("tool", tool_name)
+            on_event("tool", {"name": tool_name, "args": _args_preview})
 
         # Hard safety gate: never email unless explicitly allowed
-        if tool_name == "send_email_gmail" and not email_allowed:
+        if tool_name == "send_email" and not email_allowed:
             results.append({
                 "tool": tool_name,
                 "args": args,
@@ -300,7 +306,13 @@ def maybe_run_tool(
                 if routine_memory:
                     normalized_memory = {}
                     for k, v in routine_memory.items():
-                        if isinstance(v, list) and len(v) and isinstance(v[0], dict):
+                        # v is a list of results appended chronologically. Use the most recent.
+                        if isinstance(v, list) and len(v) > 0:
+                            v = v[-1]
+
+                        # If v is STILL a list (e.g. deep_search returns a list of dicts),
+                        # process its elements
+                        if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
                             mapped = []
                             for x in v:
                                 if "filename" in x:
@@ -309,16 +321,27 @@ def maybe_run_tool(
                                     mapped.append(x["stdout"])
                                 elif "result" in x:
                                     mapped.append(x["result"])
+                                elif "content" in x:
+                                    mapped.append(x["content"])
+                                elif "snippet" in x:
+                                    mapped.append(x["snippet"])
                                 else:
                                     mapped.append(x)
                             
-                            # If it's a single item list containing a string, unwrap it so it interpolates nicely
                             if len(mapped) == 1 and isinstance(mapped[0], str):
                                 normalized_memory[k] = mapped[0]
                             else:
                                 normalized_memory[k] = mapped
                         else:
-                            normalized_memory[k] = v
+                            # Also unwrap single-element lists of strings
+                            if isinstance(v, list) and len(v) == 1 and isinstance(v[0], str):
+                                normalized_memory[k] = v[0]
+                            else:
+                                normalized_memory[k] = v
+
+                    # Handle capability router aliases transparently
+                    if "deep_search" not in normalized_memory and "quick_search" in normalized_memory:
+                        normalized_memory["deep_search"] = normalized_memory["quick_search"]
 
                     text_args = json.dumps(args)
                     for k, v in normalized_memory.items():
@@ -328,7 +351,7 @@ def maybe_run_tool(
                         text_args = text_args.replace(f"{{{{memory.{k}}}}}", str(v))
                     args = json.loads(text_args)
 
-                if tool_name == "send_email_gmail":
+                if tool_name == "send_email":
                     try:
                         args["gmail_user"] = email
                         args["gmail_password"] = password

@@ -46,6 +46,9 @@ class OllamaProvider(BaseProvider):
                         "messages": messages,
                         "stream": True,
                         "keep_alive": config.OLLAMA_KEEP_ALIVE,
+                        "options": {
+                            "num_ctx": 16384
+                        }
                     },
                     stream=True,
                     timeout=300,

@@ -391,13 +391,14 @@ class SpeechUnderstandingEngine:
                 if len(words) > 1:
                     continue
 
+            # 2. Fix known STT mistakes
+            clean_word = word_lower.rstrip(".,!?;:'\"")
+
             # 1.b Filter out fan noise hallucinations (e.g. "aaaaa", "mmmmm")
             # If the word is more than 4 letters and is just the same letter repeating
             if len(clean_word) > 4 and len(set(clean_word)) == 1:
                 continue
 
-            # 2. Fix known STT mistakes
-            clean_word = word_lower.rstrip(".,!?;:'\"")
             if clean_word in _CORRECTIONS:
                 correction = _CORRECTIONS[clean_word]
                 # Preserve original punctuation

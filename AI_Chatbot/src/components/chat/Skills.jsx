@@ -50,7 +50,7 @@ export const SKILL_ICONS = {
 //  3. SKILL PICKER POPUP
 //     Opens when the user clicks + in the chat input bar.
 // ─────────────────────────────────────────────────────────────
-export function SkillPicker({ isDark, activeTool, setActiveTool, handleFileClick, onRoutinesClick }) {
+export function SkillPicker({ isDark, activeTool, setActiveTool, handleFileClick, onRoutinesClick, disableUpload }) {
   const [open, setOpen] = useState(false);
   const pickerRef = useRef(null);
 
@@ -115,13 +115,14 @@ export function SkillPicker({ isDark, activeTool, setActiveTool, handleFileClick
           {/* Actions */}
           {label("Actions")}
           <button
-            onClick={() => { handleFileClick(); setOpen(false); }}
-            className={row + (isDark ? "hover:bg-neutral-700 text-neutral-200" : "hover:bg-zinc-100 text-zinc-800")}
+            onClick={() => { if (!disableUpload) { handleFileClick(); setOpen(false); } }}
+            disabled={disableUpload}
+            className={row + (disableUpload ? "opacity-50 cursor-not-allowed " : "") + (isDark ? (!disableUpload ? "hover:bg-neutral-700 text-neutral-200" : "text-neutral-200") : (!disableUpload ? "hover:bg-zinc-100 text-zinc-800" : "text-zinc-800"))}
           >
             {iconBox(Paperclip, false)}
             <div className="flex flex-col items-start">
               <span className="font-medium text-[13px]">Attach File</span>
-              <span className="text-[11px] opacity-50">Upload a file to the AI</span>
+              <span className="text-[11px] opacity-50">{disableUpload ? "Max files reached (3)" : "Upload a file to the AI"}</span>
             </div>
           </button>
 

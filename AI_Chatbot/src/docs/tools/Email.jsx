@@ -1,9 +1,10 @@
 import { Mail, Send, AtSign, ArrowRight, ShieldCheck, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
+import EmailPreview from "../../assets/email-preview.mp4";
 
 const CAPABILITIES = [
     { icon: Send, title: "Compose & Send", desc: "Draft and send emails from natural language, including subject, body, and recipients." },
-    { icon: AtSign, title: "Email Delivery", desc: "Emails are delivered through the configured email service connected to the assistant." },
+    { icon: AtSign, title: "Email Delivery", desc: "Emails are delivered through the configured email provider connected to the assistant." },
     { icon: ShieldCheck, title: "Confirmation Gate", desc: "Generated emails are displayed for review and approval before delivery." },
 ];
 
@@ -44,7 +45,7 @@ export default function Email() {
             </section>
 
             <section>
-                <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Tool Functions</h2>
+                <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Available Functions</h2>
                 <div className="rounded-xl border border-zinc-200 dark:border-neutral-800 bg-zinc-100 dark:bg-neutral-800/30 overflow-hidden">
                     <div className="grid grid-cols-[1fr_2fr] text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-neutral-500 px-5 py-3 border-b border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
                         <span>Function</span><span className="pl-6">Description</span>
@@ -85,10 +86,19 @@ export default function Email() {
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-dashed border-zinc-300 dark:border-neutral-700 bg-white dark:bg-neutral-900/40 h-[320px] flex items-center justify-center">
-                    <p className="text-xs text-zinc-500 dark:text-neutral-600">
-                        Preview Placeholder
-                    </p>
+                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        disablePictureInPicture
+                        controls={false}
+                        controlsList="nodownload nofullscreen noremoteplayback"
+                        className="w-full object-cover pointer-events-none transition-transform duration-300 hover:scale-[1.01]"
+                    >
+                        <source src={EmailPreview} type="video/mp4" />
+                    </video>
                 </div>
             </section>
 
@@ -119,8 +129,8 @@ export default function Email() {
             </section>
 
             <section className="pt-4 border-t border-zinc-200 dark:border-neutral-800">
-                <Link to="/docs/tools/system-commands" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all">
-                    Next: System Commands <ArrowRight size={14} />
+                <Link to="/docs/tools/weather" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all">
+                    Next: Weather <ArrowRight size={14} />
                 </Link>
             </section>
         </div>

@@ -21,7 +21,7 @@ function Header({
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [activeProvider, setActiveProvider] = useState("ollama");
   const menuRef = useRef(null);
-  
+
   const [voices, setVoices] = useState([]);
   const [activeVoice, setActiveVoice] = useState("...");
   const [showVoiceMenu, setShowVoiceMenu] = useState(false);
@@ -29,21 +29,62 @@ function Header({
 
   const navigate = useNavigate();
 
+  // 5-minute localStorage cache for static startup data (model / provider / voices)
+  // Avoids re-fetching these on every remount or React StrictMode double-invoke.
+  const STATIC_CACHE_KEY = "header_static_cache";
+  const STATIC_CACHE_TTL = 5 * 60 * 1000; // 5 minutes in ms
+
+  const readStaticCache = () => {
+    try {
+      const raw = localStorage.getItem(STATIC_CACHE_KEY);
+      if (!raw) return null;
+      const { ts, model, provider, voices, activeVoice } = JSON.parse(raw);
+      if (Date.now() - ts > STATIC_CACHE_TTL) return null; // stale
+      return { model, provider, voices, activeVoice };
+    } catch { return null; }
+  };
+
+  const writeStaticCache = (model, provider, voices, activeVoice) => {
+    try {
+      localStorage.setItem(STATIC_CACHE_KEY, JSON.stringify({
+        ts: Date.now(), model, provider, voices, activeVoice
+      }));
+    } catch { /* ignore quota errors */ }
+  };
+
   useEffect(() => {
-    getModel().then(res => setModelState(res.model)).catch(() => { });
-    fetch("http://localhost:8000/api/providers")
-      .then(res => res.json())
-      .then(data => {
-        if(data.active) setActiveProvider(data.active);
-      }).catch(()=>{});
-      
-    getVoices().then(res => {
-      if (res.ok) {
-        setVoices(res.voices);
-        setActiveVoice(res.active);
-      }
-    }).catch(() => {});
-  }, []);
+    // Try cache first — avoids any network round-trip on remounts
+    const cached = readStaticCache();
+    if (cached) {
+      setModelState(cached.model);
+      setActiveProvider(cached.provider);
+      setVoices(cached.voices);
+      setActiveVoice(cached.activeVoice);
+      return; // cache hit — skip fetch
+    }
+
+    // Cache miss or stale — fetch from backend once
+    let cancelled = false;
+    Promise.all([
+      getModel().catch(() => null),
+      fetch("http://localhost:8000/api/providers").then(r => r.json()).catch(() => null),
+      getVoices().catch(() => null),
+    ]).then(([modelRes, providerRes, voicesRes]) => {
+      if (cancelled) return;
+      const m = modelRes?.model ?? "...";
+      const p = providerRes?.active ?? "ollama";
+      const v = voicesRes?.ok ? voicesRes.voices : [];
+      const av = voicesRes?.ok ? voicesRes.active : "...";
+      setModelState(m);
+      setActiveProvider(p);
+      setVoices(v);
+      setActiveVoice(av);
+      writeStaticCache(m, p, v, av);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — static startup data only
+
 
 
   const handleModelSelect = async (m, provider) => {
@@ -57,12 +98,16 @@ function Header({
     await setModel(m);
     setModelState(m);
     setShowModelMenu(false);
+    // Invalidate cache so next mount fetches the updated selection
+    localStorage.removeItem(STATIC_CACHE_KEY);
   };
 
   const handleVoiceSelect = async (v) => {
     await setVoice(v);
     setActiveVoice(v);
     setShowVoiceMenu(false);
+    // Invalidate cache so next mount fetches the updated selection
+    localStorage.removeItem(STATIC_CACHE_KEY);
   };
 
   useEffect(() => {
@@ -173,7 +218,7 @@ function Header({
 
           {/* CENTER */}
           <div className="absolute left-1/2 -translate-x-1/2 text-center flex flex-col items-center">
-            <h1 className="text-sm font-semibold">AI Chatbot</h1>
+            <h1 className="text-sm font-semibold">AI Agent</h1>
             <div className="flex items-center gap-2 mt-0.5">
               <p
                 onClick={() => { setShowModelMenu(v => !v); setShowVoiceMenu(false); }}
@@ -208,7 +253,7 @@ function Header({
                 Local (Ollama)
               </div>
               <div className="pb-2">
-                {["qwen2.5-coder:7b", "qwen2.5:7b", "qwen3:8b","deepseek-r1:7b","deepseek-coder:6.7b"].map(m => {
+                {["qwen2.5-coder:7b", "qwen2.5:7b", "qwen3:8b", "deepseek-r1:7b", "deepseek-coder:6.7b"].map(m => {
                   const isActive = model === m && activeProvider === "ollama";
                   return (
                     <button
@@ -380,4 +425,4 @@ function Header({
   );
 }
 
-export default Header;
+export default Header;

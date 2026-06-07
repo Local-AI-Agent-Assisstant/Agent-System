@@ -4,58 +4,63 @@ import ToolsPreview from "../assets/tools-preview.mp4";
 
 const TOOLS = [
     {
-        name: "Task Planner",
-        category: "Planner",
-        desc: "Create, organize, and manage tasks and productivity plans.",
-        href: "/docs/tools/task-planner"
+        name: "Computer Control",
+        category: "System",
+        desc: "Automate Windows UI by reading the screen, clicking elements, and typing text.",
+        href: "/docs/tools/computer-control",
     },
-
     {
-        name: "Routine Manager",
-        category: "Planner",
-        desc: "Create and manage recurring routines, schedules, and daily activities.",
-        href: "/docs/tools/routine",
+        name: "System Actions",
+        category: "System",
+        desc: "Open and close programs, files, and folders on your computer.",
+        href: "/docs/tools/system-actions",
     },
-
-    {
-        name: "Deep Search",
-        category: "Web",
-        desc: "Search the web.",
-        href: "/docs/tools/deep-search",
-    },
-
-    {
-        name: "Weather",
-        category: "Web",
-        desc: "Get weather forecasts, live conditions, and smart recommendations.",
-        href: "/docs/tools/weather",
-    },
-
-    {
-        name: "Calculator",
-        category: "Utility",
-        desc: "Perform calculations, unit conversions, and currency conversions.",
-        href: "/docs/tools/calculator",
-    },
-
-    {
-        name: "Email Integration",
-        category: "Email",
-        desc: "Send and manage emails directly through the assistant.",
-        href: "/docs/tools/email",
-    },
-
     {
         name: "System Commands",
         category: "System",
         desc: "Run local system commands and retrieve system information.",
         href: "/docs/tools/system-commands",
     },
-
+    {
+        name: "Web Search",
+        category: "Web",
+        desc: "Search the web, retrieve online information, and analyze search results.",
+        href: "/docs/tools/deep-search",
+    },
+    {
+        name: "Routine Manager",
+        category: "Planner",
+        desc: "Create and manage recurring routines, schedules, and daily activities.",
+        href: "/docs/tools/routine",
+    },
+    {
+        name: "Task Planner",
+        category: "Planner",
+        desc: "Create, organize, and manage tasks and productivity plans.",
+        href: "/docs/tools/task-planner"
+    },
+    {
+        name: "Email Integration",
+        category: "Email",
+        desc: "Send and manage emails directly through the assistant.",
+        href: "/docs/tools/email",
+    },
+    {
+        name: "Weather",
+        category: "Web",
+        desc: "Get weather forecasts, live conditions, and smart recommendations.",
+        href: "/docs/tools/weather",
+    },
+    {
+        name: "Calculator",
+        category: "Utility",
+        desc: "Perform calculations, unit conversions, and currency conversions.",
+        href: "/docs/tools/calculator",
+    },
     {
         name: "File Management",
         category: "Files",
-        desc: "Create, edit, and manage local files directly through the assistant.",
+        desc: "Create, read, edit, analyze, and manage local files directly through the assistant.",
         href: "/docs/tools/write-files",
     },
 ];
@@ -129,7 +134,7 @@ export default function ToolsSystem() {
             <section>
                 <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-2">Integrated Tools</h2>
                 <p className="text-xs text-zinc-500 dark:text-neutral-500 mb-5">
-                    Tools can be enabled, disabled, and managed individually through the assistant interface.
+                    Tools can be individually enabled, disabled, and managed through the assistant interface.
                 </p>
                 <div className="rounded-xl border border-zinc-200 dark:border-neutral-800 bg-zinc-100 dark:bg-neutral-800/30 overflow-hidden">
                     <div className="grid grid-cols-[1fr_auto_2fr] text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-neutral-500 px-5 py-3 border-b border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
@@ -157,7 +162,7 @@ export default function ToolsSystem() {
             <section className="space-y-3">
                 <div>
                     <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-1">
-                        Interface Preview
+                        Tools Preview
                     </h2>
 
                     <p className="text-xs text-zinc-500 dark:text-neutral-500">

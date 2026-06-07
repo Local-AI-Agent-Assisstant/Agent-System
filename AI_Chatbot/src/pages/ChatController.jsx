@@ -9,7 +9,9 @@ import { useVoiceChat } from "../hooks/useVoiceChat";
 import { makeMessage } from "../utils/ChatHelpers";
 import VoiceChatModal from "../components/chat/VoiceChatModal";
 import ToolPermissionModal from "../components/chat/ToolPermissionModal";
+import { SKILLS } from "../components/chat/Skills";
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 // Strip markdown symbols so Piper TTS speaks clean text
 function stripMarkdown(text) {
@@ -45,11 +47,16 @@ function ChatController() {
   const [permissionRequest, setPermissionRequest] = useState(null);
   const [activeTool, setActiveTool] = useState(null);
   const [isVoiceSending, setIsVoiceSending] = useState(false);
+  const [fileError, setFileError] = useState(null);
   const [messages, setMessages] = useState([]);
   const messagesRef = useRef([]);
   messagesRef.current = messages; // always current, no lag
   const lastMessagesLengthRef = useRef(messages.length);
   const sessionIdRef = useRef("default_user");
+  // Guards to prevent redundant idle fetches
+  const plannerFetchedOnceRef = useRef(false); // Fix 2: fetch planner once on mount
+  const permsSyncedConvoRef = useRef(null);    // Fix 3: sync perms once per convo ID
+  const permissionRequestRef = useRef(null);   // Fix 4: track permissionRequest without re-subscribing poll
 
   const [allowedTools, setAllowedTools] = useState(() => {
     try {
@@ -108,7 +115,7 @@ function ChatController() {
     saveChatTitle,
     cancelChatTitleEdit,
     handleDeleteAllChats,
-  } = useConversations(setMessages, messages);
+  } = useConversations(setMessages);
 
   const {
     isVoiceMode,
@@ -129,10 +136,9 @@ function ChatController() {
     toggleVoiceMode,
     startRecording,
     stopRecording,
-    startListening,
-    stopListening,
     speakResponse,
-    stopFallbackRecording,
+    isMuted,
+    toggleMute,
     voiceInterruptEnabled,
     toggleVoiceInterrupt
   } = useVoiceChat({
@@ -151,7 +157,6 @@ function ChatController() {
   const {
     isTyping,
     editResendTarget,
-    setEditResendTarget,
     resolvePendingMessage,
     handleSend: _handleSend,
     handleResend: _handleResend,
@@ -163,9 +168,17 @@ function ChatController() {
     handleStop,
   } = useChat((nextMessages) => updateActiveMessages(nextMessages), () => sessionIdRef.current, () => messagesRef.current);
 
+  // Fetch planner once on mount; then refresh only after an AI reply completes
   useEffect(() => {
+    if (!plannerFetchedOnceRef.current) {
+      // First render — mount fetch
+      plannerFetchedOnceRef.current = true;
+      fetchPlannerTasks();
+      return;
+    }
+    // Subsequent renders: only refresh when isTyping just went false (AI finished)
     if (!isTyping) fetchPlannerTasks();
-  }, [isTyping]);
+  }, [isTyping, fetchPlannerTasks]);
 
   useEffect(() => {
     if (activeConversationId) sessionIdRef.current = activeConversationId;
@@ -225,8 +238,18 @@ function ChatController() {
   const handleClearChat = () =>
     _handleClearChat({ setFiles });
 
-  const startEditResend = (msg) =>
-    _startEditResend(msg, setInput, textareaRef);
+  const startEditResend = (msg) => {
+    _startEditResend(msg, setInput, textareaRef, setFiles);
+    if (msg.meta?.isRoutine) {
+      setActiveTool({ name: "execute_routine", backendKey: "execute_routine", isRoutinePill: true });
+    } else if (msg.meta?.skill) {
+      const match = SKILLS.find(s => s.backendKey === msg.meta.skill);
+      if (match) setActiveTool(match);
+      else setActiveTool({ name: msg.meta.skill, backendKey: msg.meta.skill });
+    } else {
+      setActiveTool(null);
+    }
+  };
 
   const handleResend = (msg) =>
     _handleResend({
@@ -320,10 +343,42 @@ function ChatController() {
   // File handlers
   const handleFileClick = () => fileInputRef.current?.click();
 
+  const MAX_FILES = 3;
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  const MAX_TOTAL_SIZE = 20 * 1024 * 1024; // 20MB
+
+  const validateAndAddFiles = (newFiles) => {
+    setFileError(null);
+    setFiles((prev) => {
+      const allFiles = [...prev, ...newFiles];
+      
+      if (allFiles.length > MAX_FILES) {
+        setFileError("Maximum 3 files allowed.");
+        return prev;
+      }
+
+      let totalSize = prev.reduce((acc, f) => acc + (f.size || 0), 0);
+      for (const f of newFiles) {
+        if (f.size > MAX_FILE_SIZE) {
+          setFileError(`File "${f.name}" exceeds the 10MB limit.`);
+          return prev;
+        }
+        totalSize += f.size || 0;
+      }
+
+      if (totalSize > MAX_TOTAL_SIZE) {
+        setFileError("Total upload size cannot exceed 20MB.");
+        return prev;
+      }
+
+      return allFiles;
+    });
+  };
+
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files || []);
     if (!selected.length) return;
-    setFiles((prev) => [...prev, ...selected]);
+    validateAndAddFiles(selected);
     e.target.value = "";
   };
 
@@ -336,7 +391,7 @@ function ChatController() {
     e.preventDefault();
     const droppedFiles = Array.from(e.dataTransfer.files || []);
     if (!droppedFiles.length) return;
-    setFiles((prev) => [...prev, ...droppedFiles]);
+    validateAndAddFiles(droppedFiles);
   };
 
   // Theme
@@ -387,7 +442,7 @@ function ChatController() {
   }, [messages]);
 
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+
 
   const handleAllowPermission = async (dontAskAgain) => {
     if (!permissionRequest) return;
@@ -425,7 +480,7 @@ function ChatController() {
     }
   };
 
-  const handleDenyPermission = async () => {
+  const handleDenyPermission = useCallback(async () => {
     if (!permissionRequest) return;
     const requestId = permissionRequest.requestId;
 
@@ -444,7 +499,7 @@ function ChatController() {
     } catch {
       // ignore
     }
-  }
+  }, [permissionRequest]);
 
   const handleGrantFullAccess = async (durationSeconds) => {
     if (!permissionRequest) return;
@@ -466,6 +521,11 @@ function ChatController() {
 
 
   useEffect(() => {
+    // Only sync permissions once per conversation ID — not on every apiStatus transition
+    if (!activeConversationId) return;
+    if (permsSyncedConvoRef.current === activeConversationId) return;
+    permsSyncedConvoRef.current = activeConversationId;
+
     async function syncPermissions() {
       try {
         const data = await getToolPermissions(sessionIdRef.current);
@@ -492,12 +552,12 @@ function ChatController() {
             // Keep the existing localStorage state — don't overwrite it
           }
         }
-      } catch (err) {
+      } catch {
         // ignore
       }
     }
     syncPermissions();
-  }, [apiStatus, activeConversationId]);
+  }, [activeConversationId]); // removed apiStatus — health-check state changes must not trigger this
 
 
 
@@ -519,9 +579,12 @@ function ChatController() {
     }, 60000);
 
     return () => clearTimeout(timeout);
-  }, [permissionRequest]);
+  }, [permissionRequest, handleDenyPermission]);
 
   // (Removed email sent handler as it's now handled by resolvePendingMessage)
+  // Keep permissionRequestRef in sync so the interval below can read it without being a dep
+  useEffect(() => { permissionRequestRef.current = permissionRequest; }, [permissionRequest]);
+
   useEffect(() => {
     // Run during both text-mode AI calls (isTyping) and voice-mode AI calls
     const isVoiceProcessing = voiceState === "thinking" || voiceState === "responding";
@@ -533,7 +596,8 @@ function ChatController() {
           `${API_BASE}/api/permissions/pending?session_id=${sessionIdRef.current}`
         );
         const data = await res.json();
-        if (data.has_pending && !permissionRequest) {
+        // Read the ref instead of the stale closure value so the interval never needs to restart
+        if (data.has_pending && !permissionRequestRef.current) {
           setPermissionRequest({
             requestId: data.request_id,
             toolName: data.tool,
@@ -545,7 +609,7 @@ function ChatController() {
     }, 1000);
 
     return () => clearInterval(poll);
-  }, [isTyping, isVoiceSending, voiceState, permissionRequest]);
+  }, [isTyping, isVoiceSending, voiceState]); // removed permissionRequest — avoids interval restart on modal open/close
 
 
   return (
@@ -554,6 +618,7 @@ function ChatController() {
       messages={messages}
       input={input}
       files={files}
+      setFiles={setFiles}
       theme={theme}
       isTyping={isTyping}
       showScrollToBottom={showScrollToBottom}
@@ -582,6 +647,8 @@ function ChatController() {
       handleInputChange={handleInputChange}
       handleFileClick={handleFileClick}
       handleFileChange={handleFileChange}
+      fileError={fileError}
+      setFileError={setFileError}
       toggleTheme={toggleTheme}
       handleScrollToBottom={handleScrollToBottom}
       handleClearChat={handleClearChat}
@@ -639,6 +706,8 @@ function ChatController() {
           reasoningHistory={reasoningHistory}
           voiceHistory={voiceHistory}
           voiceError={voiceError}
+          isMuted={isMuted}
+          toggleMute={toggleMute}
           voiceInterruptEnabled={voiceInterruptEnabled}
           toggleVoiceInterrupt={toggleVoiceInterrupt}
           onClose={closeVoiceChat}

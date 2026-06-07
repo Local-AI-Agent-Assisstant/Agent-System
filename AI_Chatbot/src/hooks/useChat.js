@@ -1,8 +1,25 @@
 import { useState, useRef } from "react";
 import { makeId, makeMessage } from "../utils/ChatHelpers";
-import { sendMessage } from "../api/ChatApi";
+import { sendMessage, abortChat } from "../api/ChatApi";
 
 const MIN_ACTION_MS = 1500;
+
+// ── Format a tool event (string or {name, args} dict) into a human-readable label
+function formatToolEvent(data) {
+    if (!data) return "";
+    if (typeof data === "string") return data;
+    const name = data.name || "";
+    const args = data.args || {};
+    const SKIP = new Set(["gmail_user", "gmail_password", "password", "on_progress"]);
+    const parts = Object.entries(args)
+        .filter(([k, v]) => !SKIP.has(k) && v !== null && v !== undefined && v !== "")
+        .map(([k, v]) => {
+            let sv = String(v);
+            if (sv.length > 60) sv = sv.slice(0, 57) + "...";
+            return `${k}=${sv}`;
+        });
+    return parts.length > 0 ? `${name}(${parts.join(", ")})` : name;
+}
 
 export function useChat(updateActiveMessages, getSessionId, getMessages) {
     const [isTyping, setIsTyping] = useState(false);
@@ -19,6 +36,14 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
     const startTimeRef = useRef(null);
     const lastActionRef = useRef(null);    // last pendingAction label shown
     const pendingSkillRef = useRef(null);  // "deep_think" or null
+    const streamingStartedRef = useRef(false); // true once first chunk arrives
+
+    // ── Smooth display queue (ChatGPT-style typewriter effect) ────────────────
+    // Incoming text is buffered here and drained at a fixed char rate by a RAF
+    // loop so the visual typing speed is smooth regardless of network jitter.
+    const chunkQueueRef   = useRef(""); // characters waiting to be rendered
+    const displayedRef    = useRef(""); // characters already on screen
+    const displayRafRef   = useRef(null); // requestAnimationFrame handle
 
     const _setPendingAction = (label) => {
         const id = pendingMsgIdRef.current;
@@ -94,38 +119,120 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
         pendingSkillRef.current = null;
     };
 
+    // Characters to reveal per animation frame.  5 chars @ 60 fps ≈ 300 chars/sec —
+    // fast enough to keep up with even a quick model, but spread out a sudden burst
+    // so text flows smoothly instead of "snapping" in.
+    const DISPLAY_CHARS_PER_FRAME = 5;
+
+    // Start (or resume) the RAF drain loop for the given pending message id.
+    const _scheduleDisplayDrain = (id) => {
+        if (displayRafRef.current) return; // loop already running
+        const drain = () => {
+            const queue = chunkQueueRef.current;
+            if (!queue) { displayRafRef.current = null; return; }
+            const take = queue.slice(0, DISPLAY_CHARS_PER_FRAME);
+            chunkQueueRef.current = queue.slice(DISPLAY_CHARS_PER_FRAME);
+            displayedRef.current += take;
+            updateActiveMessages(
+                getMessages().map((m) =>
+                    m.id === id
+                        ? { ...m, content: displayedRef.current, meta: { ...m.meta, isStreaming: true } }
+                        : m
+                )
+            );
+            displayRafRef.current = chunkQueueRef.current
+                ? requestAnimationFrame(drain)
+                : null;
+        };
+        displayRafRef.current = requestAnimationFrame(drain);
+    };
+
+    // Cancel the RAF loop and wipe all display state (called at start of new send).
+    const _resetDisplayQueue = () => {
+        if (displayRafRef.current) { cancelAnimationFrame(displayRafRef.current); displayRafRef.current = null; }
+        chunkQueueRef.current = "";
+        displayedRef.current  = "";
+    };
+
+    // Cancel the RAF loop and instantly flush remaining queue (called before finalize / stop).
+    // Does NOT update React state — the caller is about to do a full message update anyway.
+    const _flushDisplayQueue = () => {
+        if (displayRafRef.current) { cancelAnimationFrame(displayRafRef.current); displayRafRef.current = null; }
+        displayedRef.current += chunkQueueRef.current;
+        chunkQueueRef.current = "";
+    };
+
     const handleStop = () => {
         _resetActionQueue();
+        _flushDisplayQueue(); // flush remaining queue into displayedRef
 
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
+        abortChat(getSessionId?.() ?? "default_user");
+        
         const pendingId = pendingMsgIdRef.current;
         pendingMsgIdRef.current = null;
         setIsTyping(false);
+
+        // displayedRef.current holds everything that was streamed + any flushed remainder
+        const stoppedContent = displayedRef.current || "";
+        _resetDisplayQueue();
 
         updateActiveMessages(
             getMessages().map((m) =>
                 m.id === pendingId
                     ? {
                         ...m,
-                        content: "_Response was interrupted._",
-                        meta: { ...m.meta, isPending: false },
+                        // Use flushed display content so nothing visible is lost on stop
+                        content: stoppedContent || m.content || "_Response was interrupted._",
+                        meta: { ...m.meta, isPending: false, isStreaming: false, pendingAction: undefined },
                     }
                     : m
             )
         );
     };
 
-    const getThinkingLabel = (files = []) => {
-        if (files?.some((f) => f.type?.startsWith("image/"))) {
+    const getThinkingLabel = (files = [], attachments = []) => {
+        const hasImage = files?.some((f) => f.type?.startsWith("image/")) || attachments?.some((a) => a.type?.startsWith("image/"));
+        if (hasImage) {
             return "Analyzing image…";
         }
 
-        if (files?.length > 0) {
-            return "Reading file…";
+        if (files?.length > 0 || attachments?.length > 0) {
+            return "Reading files…";
         }
 
         return "Thinking…";
+    };
+
+    // Helper: build completed meta fields (for the persistent badge)
+    const buildCompletedMeta = (baseMeta = {}) => ({
+        ...baseMeta,
+        completedAction: lastActionRef.current,
+        durationMs: startTimeRef.current ? Date.now() - startTimeRef.current : null,
+        isThinker: pendingSkillRef.current === "deep_think",
+    });
+
+    // Helper: finalize the pending message in-place (no visual snap / message re-creation)
+    // Always uses authorContent (= data.response) as the final content — it is the complete,
+    // authoritative response from the backend. Streamed m.content can be partial or garbled.
+    const finalizePendingMsg = (pendingId, completedMeta, authorContent) => {
+        updateActiveMessages(
+            getMessages().map((m) => {
+                if (m.id !== pendingId) return m;
+                return {
+                    ...m,
+                    content: authorContent || "",   // always the correct full response
+                    meta: {
+                        ...m.meta,
+                        ...completedMeta,
+                        isPending: false,
+                        isStreaming: false,
+                        pendingAction: undefined,
+                    },
+                };
+            })
+        );
     };
 
     const handleSend = async ({
@@ -133,35 +240,71 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
         toolHint = "",
         files,
         editResendTarget: editTarget,
+        routineName,
         setInput,
         setFiles,
         textareaRef,
-        setPermissionRequest,
     }) => {
         const text = input.trim();
         const hasFiles = files.length > 0;
         const currentFiles = files;
-        const skillName = toolHint
-            ? toolHint.match(/\[FORCE_TOOL:(\w+)\]/)?.[1] || null
-            : null;
+
+        const originalMsgForEdit = editTarget ? getMessages().find((m) => m.id === editTarget) : null;
+        
+        // Parse skill from explicit toolHint, or inherit from the message being edited
+        const parsedSkillName = toolHint ? toolHint.match(/\[FORCE_TOOL:(\w+)\]/)?.[1] || null : null;
+        const finalSkillName = parsedSkillName || originalMsgForEdit?.meta?.skill || null;
+        
+        // Inherit routine state if we are resending/editing a routine execution
+        const finalRoutineName = routineName || originalMsgForEdit?.meta?.routineName || null;
+        const finalIsRoutine = !!finalRoutineName;
+
+        // If inherited from edit, we must rebuild the toolHint string so the backend actually runs it
+        const finalToolHint = parsedSkillName ? toolHint : (finalSkillName ? `[FORCE_TOOL:${finalSkillName}] ` : "");
 
         abortControllerRef.current?.abort();
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
         _resetActionQueue();
-        startTimeRef.current = Date.now();
-        pendingSkillRef.current = skillName; // track skill for thinker detection
+        _resetDisplayQueue();                // clear any leftover display state from previous send
+        startTimeRef.current = new Date().getTime();
+        pendingSkillRef.current = finalSkillName; // track skill for thinker detection
+        streamingStartedRef.current = false; // reset for each new send
 
         const onEvent = (type, data) => {
             if (type === "tool") {
-                showAction(`Using: ${data}`);
+                // Don't update label once the AI has started streaming response text
+                if (streamingStartedRef.current) return;
+                
+                // Format tool name + parameters for display
+                const toolLabel = formatToolEvent(data);
+                const toolName = typeof data === "string" ? data : (data?.name || "");
+
+                // Keep underscores for UI display as requested
+                showAction(`Using: ${toolLabel}`);
+                const id = pendingMsgIdRef.current;
+                if (id) {
+                    updateActiveMessages(getMessages().map(m => {
+                        if (m.id !== id) return m;
+                        return {
+                            ...m,
+                            meta: {
+                                ...m.meta,
+                                thinkerSteps: [...(m.meta.thinkerSteps || []), `Using ${toolLabel}`],
+                                ...(finalIsRoutine ? { routineSteps: [...(m.meta.routineSteps || []), toolName] } : {})
+                            }
+                        };
+                    }));
+                }
             }
 
             else if (type === "thinking") {
+                // Don't flip back to "Thinking..." once streaming has already started
+                if (streamingStartedRef.current) return;
                 if (data) {
                     showAction(data);
                 } else {
-                    showAction(getThinkingLabel(currentFiles));
+                    showAction(getThinkingLabel(currentFiles, originalMsgForEdit?.attachments));
                 }
             }
 
@@ -174,24 +317,14 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
             else if (type === "chunk") {
                 const id = pendingMsgIdRef.current;
                 if (!id) return;
-                updateActiveMessages(
-                    getMessages().map((m) =>
-                        m.id === id
-                            ? { ...m, content: (m.content || "") + data, meta: { ...m.meta, isStreaming: true } }
-                            : m
-                    )
-                );
+                streamingStartedRef.current = true; // mark that real content is flowing
+                // Push new text into the smooth display queue instead of updating React
+                // state directly.  The RAF drain loop reveals it at a fixed char rate.
+                chunkQueueRef.current += data;
+                _scheduleDisplayDrain(id);
             }
             // permission_request is handled by polling in ChatController
         };
-
-        // Helper: build completed meta fields (for the persistent badge)
-        const buildCompletedMeta = (baseMeta = {}) => ({
-            ...baseMeta,
-            completedAction: lastActionRef.current,
-            durationMs: startTimeRef.current ? Date.now() - startTimeRef.current : null,
-            isThinker: pendingSkillRef.current === "deep_think" || true, // treat all thinking as thinker
-        });
 
 
         // --- Edit & Resend path ---
@@ -200,15 +333,26 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
             if (idx === -1) return;
 
             const base = getMessages().slice(0, idx);
-            const originalMsg = getMessages().find((m) => m.id === editTarget);
+            const attachments = currentFiles.length > 0
+                ? currentFiles.map((f) => ({
+                    name: f.name,
+                    size: f.size,
+                    type: f.type || "",
+                    url: URL.createObjectURL(f),
+                    rawFile: f,
+                }))
+                : [];
+
             const editedMsg = makeMessage({
                 role: "user",
                 content: text,
-                attachments: originalMsg?.attachments || [],
+                attachments: attachments,
+                meta: {
+                    ...(finalSkillName ? { skill: finalSkillName } : {}),
+                    ...(finalIsRoutine ? { isRoutine: true, routineName: finalRoutineName } : {})
+                }
             });
-            const originalFiles = originalMsg?.attachments
-                ?.map((a) => a.rawFile)
-                ?.filter(Boolean) || [];
+            const originalFiles = currentFiles;
             const next = [...base, editedMsg];
 
             updateActiveMessages(next);
@@ -216,11 +360,11 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
             setEditResendTarget(null);
             setFiles([]);
             setIsTyping(true);
-            showAction(getThinkingLabel(currentFiles));
+            showAction(getThinkingLabel(currentFiles, originalMsgForEdit?.attachments));
 
             const pendingId = makeId();
             pendingMsgIdRef.current = pendingId;
-            startTimeRef.current = Date.now(); // start timer for edit path
+            startTimeRef.current = new Date().getTime(); // start timer for edit path
             const pendingMsg = {
                 id: pendingId,
                 role: "assistant",
@@ -229,16 +373,16 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
                 attachments: [],
                 meta: {
                     isPending: true,
-                    pendingAction: getThinkingLabel(currentFiles),
-                    skill: skillName || undefined,
-                    isThinker: skillName === "deep_think",
-                    thinkerSteps: skillName === "deep_think" ? [] : undefined,
+                    pendingAction: getThinkingLabel(currentFiles, originalMsgForEdit?.attachments),
+                    skill: finalSkillName || undefined,
+                    isThinker: finalSkillName === "deep_think",
+                    thinkerSteps: finalSkillName === "deep_think" ? [] : undefined,
                 },
             };
             updateActiveMessages([...next, pendingMsg]);
 
             try {
-                const data = await sendMessage(toolHint + text, originalFiles, onEvent, getSessionId?.() ?? "default_user", [], abortControllerRef.current?.signal);
+                const data = await sendMessage(finalToolHint + text, originalFiles, onEvent, getSessionId?.() ?? "default_user", [], abortControllerRef.current?.signal);
 
                 if (data?.aborted) {
                     pendingMsgIdRef.current = null;
@@ -275,26 +419,21 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
                 const capturedSteps = pendingSkillRef.current === "deep_think"
                     ? (getMessages().find(m => m.id === pendingId)?.meta?.thinkerSteps || [])
                     : undefined;
-                const realMsg = makeMessage({
-                    role: "assistant",
-                    content: responseText,
-                    meta: buildCompletedMeta({
-                        ...(data.tool ? { tool: data.tool } : {}),
-                        ...(data.files?.length ? { files: data.files } : {}),
-                        ...(data.sources?.length ? { sources: data.sources } : {}),
-                        // Carry over accumulated thinker steps from the pending message
-                        ...(capturedSteps ? {
-                            thinkerSteps: capturedSteps,
-                            skill: "deep_think",
-                        } : {}),
-                    }),
+                const completedMeta = buildCompletedMeta({
+                    ...(data.tool ? { tool: data.tool } : {}),
+                    ...(data.files?.length ? { files: data.files } : {}),
+                    ...(data.sources?.length ? { sources: data.sources } : {}),
+                    ...(capturedSteps ? {
+                        thinkerSteps: capturedSteps,
+                        skill: "deep_think",
+                    } : {}),
                 });
 
-
                 finishAction(() => {
+                    _flushDisplayQueue(); // drain any remaining queued chars before finalizing
                     pendingMsgIdRef.current = null;
                     setIsTyping(false);
-                    updateActiveMessages([...next, realMsg]);
+                    finalizePendingMsg(pendingId, completedMeta, responseText);
                 });
             } catch {
                 const errorMsg = makeMessage({
@@ -325,7 +464,15 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
 
         const next = [
             ...getMessages(),
-            makeMessage({ role: "user", content: text, attachments, meta: skillName ? { skill: skillName } : undefined, }),
+            makeMessage({ 
+                role: "user", 
+                content: text, 
+                attachments, 
+                meta: {
+                    ...(finalSkillName ? { skill: finalSkillName } : {}),
+                    ...(finalIsRoutine ? { isRoutine: true, routineName: finalRoutineName } : {})
+                }
+            }),
         ];
 
         updateActiveMessages(next);
@@ -341,25 +488,25 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
 
         const pendingId = makeId();
         pendingMsgIdRef.current = pendingId;
-        startTimeRef.current = Date.now();
+        startTimeRef.current = new Date().getTime();
         const pendingMsg = {
-            id: pendingId,
-            role: "assistant",
-            content: null,
-            createdAt: new Date().toISOString(),
-            attachments: [],
-            meta: {
-                isPending: true,
-                pendingAction: getThinkingLabel(currentFiles),
-                skill: skillName || undefined,
-                isThinker: skillName === "deep_think",
-                thinkerSteps: skillName === "deep_think" ? [] : undefined,
-            },
-        };
-        updateActiveMessages([...next, pendingMsg]);
+                id: pendingId,
+                role: "assistant",
+                content: null,
+                createdAt: new Date().toISOString(),
+                attachments: [],
+                meta: {
+                    isPending: true,
+                    pendingAction: getThinkingLabel(currentFiles),
+                    skill: finalSkillName || undefined,
+                    isThinker: finalSkillName === "deep_think",
+                    thinkerSteps: finalSkillName === "deep_think" ? [] : undefined,
+                },
+            };
+            updateActiveMessages([...next, pendingMsg]);
 
-        try {
-            const data = await sendMessage(toolHint + text, currentFiles, onEvent, getSessionId?.() ?? "default_user", [], abortControllerRef.current?.signal);
+            try {
+                const data = await sendMessage(finalToolHint + text, currentFiles, onEvent, getSessionId?.() ?? "default_user", [], abortControllerRef.current?.signal);
 
             if (data?.aborted) {
                 pendingMsgIdRef.current = null;
@@ -386,7 +533,12 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
                     setIsTyping(false);
                     updateActiveMessages(getMessages().map(m => m.id === pendingId ? {
                         ...m,
-                        meta: { ...m.meta, pendingAction: "editing_email", emailDraft: data.email_preview }
+                        meta: { 
+                            ...m.meta, 
+                            pendingAction: "editing_email", 
+                            thinkerSteps: [...(m.meta.thinkerSteps || []), "editing email"],
+                            emailDraft: data.email_preview 
+                        }
                     } : m));
                 });
                 return;
@@ -394,29 +546,36 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
 
 
             const responseText = data.response || "";
-            // Capture thinkerSteps NOW before finishAction queue delay can clear the pending message
-            const capturedSteps = pendingSkillRef.current === "deep_think"
+            // Capture thinkerSteps and routineSteps NOW before finishAction queue delay can clear the pending message
+            const capturedThinkerSteps = pendingSkillRef.current === "deep_think"
                 ? (getMessages().find(m => m.id === pendingId)?.meta?.thinkerSteps || [])
                 : undefined;
-            const realMsg = makeMessage({
-                role: "assistant",
-                content: responseText,
-                meta: buildCompletedMeta({
-                    ...(data.tool ? { tool: data.tool } : {}),
-                    ...(data.files?.length ? { files: data.files } : {}),
-                    ...(data.sources?.length ? { sources: data.sources } : {}),
-                    // Carry over accumulated thinker steps from the pending message
-                    ...(capturedSteps ? {
-                        thinkerSteps: capturedSteps,
-                        skill: "deep_think",
-                    } : {}),
-                }),
-            });
+            const capturedRoutineSteps = finalIsRoutine
+                ? (getMessages().find(m => m.id === pendingId)?.meta?.routineSteps || [])
+                : undefined;
+
+            const completedMeta = {
+                ...(data.tool ? { tool: data.tool } : {}),
+                ...(data.files?.length ? { files: data.files } : {}),
+                ...(data.sources?.length ? { sources: data.sources } : {}),
+                completedAction: lastActionRef.current,
+                durationMs: startTimeRef.current ? new Date().getTime() - startTimeRef.current : null,
+                isThinker: pendingSkillRef.current === "deep_think",
+                ...(capturedThinkerSteps ? {
+                    thinkerSteps: capturedThinkerSteps,
+                    skill: "deep_think",
+                } : {}),
+                ...(capturedRoutineSteps ? {
+                    routineSteps: capturedRoutineSteps,
+                    isRoutine: true,
+                } : {}),
+            };
 
             finishAction(() => {
-                pendingMsgIdRef.current = null;
+                _flushDisplayQueue(); // drain any remaining queued chars before finalizing
+                 pendingMsgIdRef.current = null;
                 setIsTyping(false);
-                updateActiveMessages([...next, realMsg]);
+                finalizePendingMsg(pendingId, completedMeta, responseText);
             });
         } catch {
             const errorMsg = makeMessage({
@@ -447,196 +606,53 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
         } catch { /* ignore */ }
     };
 
-    const startEditResend = (msg, setInput, textareaRef) => {
+    const startEditResend = (msg, setInput, textareaRef, setFiles) => {
         setInput(msg.content);
+        if (setFiles && msg.attachments?.length > 0) {
+            setFiles(msg.attachments.map(a => a.rawFile).filter(Boolean));
+        }
         setEditResendTarget(msg.id);
         textareaRef?.current?.focus();
     };
 
-    const handleResend = async ({ msgId, content, setPermissionRequest }) => {
+    const handleResend = async ({ msgId, content }) => {
         if (!content?.trim()) return;
 
-        // Derive context FIRST (needed for skillName before onEvent is built)
+        // Derive context FIRST
         const allMessages = getMessages();
         const msgIndex = allMessages.findIndex((m) => m.id === msgId);
         const originalMessage = msgIndex !== -1 ? allMessages[msgIndex] : null;
-        const skillName = originalMessage?.meta?.skill || null;
-        const originalFiles = originalMessage?.attachments
-            ?.map((a) => a.rawFile)
-            ?.filter(Boolean) || [];
+        if (!originalMessage) return;
 
-        abortControllerRef.current?.abort();
-        const abortController = new AbortController();
-        abortControllerRef.current = abortController;
-
-        _resetActionQueue();
-        startTimeRef.current = Date.now();
-
-
-        pendingSkillRef.current = skillName;
-
-        const onEvent = (type, data) => {
-            if (type === "tool") {
-                showAction(`Using: ${data}`);
-            }
-
-            else if (type === "thinking") {
-                if (data) {
-                    showAction(data);
-                } else {
-                    showAction(getThinkingLabel(originalFiles));
+        let targetUserMsg = originalMessage;
+        if (originalMessage.role === "assistant") {
+            for (let i = msgIndex - 1; i >= 0; i--) {
+                if (allMessages[i].role === "user") {
+                    targetUserMsg = allMessages[i];
+                    break;
                 }
             }
-
-
-            else if (type === "thinker_step") {
-                if (data) showAction(data);
-            }
-
-            else if (type === "chunk") {
-                const id = pendingMsgIdRef.current;
-                if (!id) return;
-
-                updateActiveMessages(
-                    getMessages().map((m) =>
-                        m.id === id
-                            ? {
-                                ...m,
-                                content: (m.content || "") + data,
-                                meta: { ...m.meta, isStreaming: true }
-                            }
-                            : m
-                    )
-                );
-            }
-        };
-
-        const recreatedUserMessage = makeMessage({
-            role: "user",
-            content,
-            attachments: originalMessage?.attachments || [],
-            meta: skillName ? { skill: skillName } : undefined,
-        });
-
-        const snapshot =
-            msgIndex !== -1
-                ? [...allMessages.slice(0, msgIndex), recreatedUserMessage]
-                : [...allMessages, recreatedUserMessage];
-
-        updateActiveMessages(snapshot);
-
-        setIsTyping(true);
-
-        const pendingId = makeId();
-        pendingMsgIdRef.current = pendingId;
-        startTimeRef.current = Date.now();
-        const pendingMsg = {
-            id: pendingId,
-            role: "assistant",
-            content: null,
-            createdAt: new Date().toISOString(),
-            attachments: [],
-            meta: {
-                isPending: true,
-                pendingAction: getThinkingLabel(originalFiles),
-                skill: skillName || undefined,
-                isThinker: skillName === "deep_think",
-                thinkerSteps: skillName === "deep_think" ? [] : undefined,
-            },
-        };
-        updateActiveMessages([...snapshot, pendingMsg]);
-
-        // First status label fires AFTER pendingMsgIdRef is set so _setPendingAction
-        // can find the message and append thinker steps to it correctly.
-        showAction(getThinkingLabel(originalFiles));
-
-        try {
-            const toolPrefix = skillName
-                ? `[FORCE_TOOL:${skillName}] `
-                : "";
-
-            const data = await sendMessage(
-                toolPrefix + content,
-                originalFiles,
-                onEvent,
-                getSessionId?.() ?? "default_user",
-                [],
-                abortControllerRef.current?.signal
-            );
-
-            if (data?.aborted) {
-                pendingMsgIdRef.current = null;
-                setIsTyping(false);
-                return;
-            }
-
-            if (data.error) {
-                const errorMsg = makeMessage({ role: "assistant", content: data.message || "Something went wrong.", meta: { isError: true } });
-                finishAction(() => {
-                    pendingMsgIdRef.current = null;
-                    setIsTyping(false);
-                    updateActiveMessages([...snapshot, errorMsg]);
-                });
-                return;
-            }
-
-            if (data.email_preview) {
-                if (data.email_preview?.to) {
-                    saveEmailToStorage(data.email_preview.to);
-                }
-                finishAction(() => {
-                    setIsTyping(false);
-                    updateActiveMessages(getMessages().map(m => m.id === pendingId ? {
-                        ...m,
-                        meta: { ...m.meta, pendingAction: "editing_email", emailDraft: data.email_preview }
-                    } : m));
-                });
-                return;
-            }
-
-
-            const responseText = data.response || "";
-            // Capture thinkerSteps NOW before finishAction queue delay can clear the pending message
-            const capturedSteps = pendingSkillRef.current === "deep_think"
-                ? (getMessages().find(m => m.id === pendingId)?.meta?.thinkerSteps || [])
-                : undefined;
-            const realMsg = makeMessage({
-                role: "assistant",
-                content: responseText,
-                meta: ({
-                    ...(data.tool ? { tool: data.tool } : {}),
-                    ...(data.files?.length ? { files: data.files } : {}),
-                    ...(data.sources?.length ? { sources: data.sources } : {}),
-                    completedAction: lastActionRef.current,
-                    durationMs: startTimeRef.current ? Date.now() - startTimeRef.current : null,
-                    isThinker: pendingSkillRef.current === "deep_think",
-                    ...(capturedSteps ? {
-                        thinkerSteps: capturedSteps,
-                        skill: "deep_think",
-                    } : {}),
-                }),
-            });
-            finishAction(() => {
-                pendingMsgIdRef.current = null;
-                setIsTyping(false);
-                updateActiveMessages([...snapshot, realMsg]);
-            });
-        } catch {
-            const errorMsg = makeMessage({
-                role: "assistant",
-                content: "Cannot connect to the server. Please make sure the server is running.",
-                meta: { isError: true }
-            });
-            finishAction(() => {
-                pendingMsgIdRef.current = null;
-                setIsTyping(false);
-                updateActiveMessages([...snapshot, errorMsg]);
-            });
         }
+
+        if (!targetUserMsg || targetUserMsg.role !== "user") return;
+
+        const skillName = targetUserMsg.meta?.skill || null;
+        const toolHint = skillName ? `[FORCE_TOOL:${skillName}]` : "";
+
+        // Use the rock-solid Edit & Resend path that already handles slicing,
+        // streaming, and the smooth display queue properly.
+        handleSend({
+            input: targetUserMsg.content,
+            toolHint,
+            files: targetUserMsg.attachments?.map(a => a.rawFile).filter(Boolean) || [],
+            editResendTarget: targetUserMsg.id,
+            setInput: () => { }, // Protect current chat box input
+            setFiles: () => { }, // Protect current chat box files
+            textareaRef: null,
+        });
     };
 
-
-    const retryMessage = (errorMsgId, { setFiles, textareaRef, setPermissionRequest }) => {
+    const retryMessage = (errorMsgId, { setFiles, textareaRef }) => {
         const messages = getMessages();
         const errorIndex = messages.findIndex((m) => m.id === errorMsgId);
         if (errorIndex === -1) return;
@@ -662,7 +678,6 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
             setInput: () => { },
             setFiles,
             textareaRef,
-            setPermissionRequest,
         });
     };
 
@@ -675,7 +690,13 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
         updateActiveMessages(getMessages().map(m => m.id === pendingId ? {
             ...m,
             content: "",
-            meta: { ...m.meta, isPending: true, pendingAction: "Sending...", emailDraft: null }
+            meta: { 
+                ...m.meta, 
+                isPending: true, 
+                pendingAction: "sending", 
+                thinkerSteps: [...(m.meta.thinkerSteps || []), "sending"],
+                emailDraft: null 
+            }
         } : m));
 
         // Let the UI stream the AI's dynamic response
@@ -697,18 +718,23 @@ export function useChat(updateActiveMessages, getSessionId, getMessages) {
             const data = await sendMessage(prompt, [], onEvent, getSessionId?.() ?? "default_user");
 
             finishAction(() => {
+                _flushDisplayQueue();
                 pendingMsgIdRef.current = null;
                 setIsTyping(false);
-                const filtered = getMessages().filter(m => m.id !== pendingId);
-                const finalMsg = makeMessage({
-                    role: "assistant",
-                    content: data.response || "Finished.",
-                    meta: {
-                        tool: data.tool,
-                        files: [...(data.files || []), ...(extraMeta.files || [])]
-                    }
+
+                const existingMsg = getMessages().find(m => m.id === pendingId);
+                const capturedThinkerSteps = existingMsg?.meta?.thinkerSteps;
+
+                const completedMeta = buildCompletedMeta({
+                    ...(data.tool ? { tool: data.tool } : {}),
+                    ...(data.files?.length ? { files: data.files } : {}),
+                    ...(data.sources?.length ? { sources: data.sources } : {}),
+                    ...(capturedThinkerSteps ? { thinkerSteps: capturedThinkerSteps } : {}),
+                    ...(extraMeta.files?.length ? { files: [...(data.files || []), ...extraMeta.files] } : {}),
+                    emailDraft: undefined,
                 });
-                updateActiveMessages([...filtered, finalMsg]);
+
+                finalizePendingMsg(pendingId, completedMeta, data.response || "Finished.");
             });
         } catch (err) {
             console.error("AI dynamic resolve failed:", err);

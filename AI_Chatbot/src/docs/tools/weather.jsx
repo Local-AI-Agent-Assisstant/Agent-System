@@ -55,12 +55,12 @@ export default function WeatherGuide() {
                 </div>
 
                 <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-neutral-100">
-                    Weather Tool
+                    Weather
                 </h1>
 
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
                     Get real-time weather forecasts, live conditions, location-aware insights,
-                    and AI-generated recommendations directly through the AI assistant.
+                    and contextual recommendations directly through the assistant.
                 </p>
             </section>
 
@@ -175,7 +175,7 @@ export default function WeatherGuide() {
                         </p>
 
                         <p className="text-xs text-zinc-600 dark:text-neutral-400 leading-relaxed">
-                            Weather data depends on external forecast providers and may vary slightly
+                            Weather information depends on external forecast providers and may vary slightly
                             based on region, update timing, and network availability.
                         </p>
                     </div>

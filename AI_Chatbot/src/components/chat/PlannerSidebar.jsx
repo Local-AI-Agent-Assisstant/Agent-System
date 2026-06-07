@@ -5,6 +5,53 @@ import {
   ChevronDown, ChevronRight,
 } from "lucide-react";
 
+// ── Reusable section header ──────────────────────────────
+const SectionHeader = ({ label, count, sectionKey, color = "", isDark, collapsed, toggleSection }) => (
+  <button
+    onClick={() => toggleSection(sectionKey)}
+    className={"w-full flex items-center gap-2 mb-2 px-1 group " + (isDark ? "text-neutral-500" : "text-zinc-400")}
+  >
+    <span className={"text-[10px] font-semibold uppercase tracking-widest group-hover:opacity-80 transition " + color}>
+      {label}
+    </span>
+    {count > 0 && (
+      <span className={"text-[10px] font-semibold px-1.5 py-0.5 rounded-full " + color +
+        (isDark ? " bg-neutral-800" : " bg-zinc-100")}>
+        {count}
+      </span>
+    )}
+    <div className={"flex-1 h-px " + (isDark ? "bg-neutral-800" : "bg-zinc-200")} />
+    {collapsed[sectionKey]
+      ? <ChevronRight size={11} className="opacity-60" />
+      : <ChevronDown size={11} className="opacity-60" />}
+  </button>
+);
+
+// ── Task card ────────────────────────────────────────────
+const TaskCard = ({ task, icon, iconClass = "", strikethrough = false, opacity = false, sub = null, isDark }) => (
+  <div
+    className={
+      "rounded-xl border transition-all duration-150 " +
+      (opacity ? "opacity-50 " : "") +
+      (isDark
+        ? "border-neutral-700/60 bg-neutral-800/40"
+        : "border-zinc-200 bg-white shadow-sm")
+    }
+  >
+    <div className="flex items-start gap-3 px-3 py-2.5">
+      <span className={"flex-shrink-0 mt-0.5 " + iconClass}>{icon}</span>
+      <div className="flex-1 min-w-0">
+        <span className={"text-[13px] leading-snug block " + (strikethrough ? "line-through" : "")}>
+          {task.task}
+        </span>
+        {sub && (
+          <span className="text-[11px] opacity-50 mt-0.5 block">{sub}</span>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
 function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefresh }) {
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState({});
@@ -31,53 +78,6 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
 
   const toggleSection = (key) =>
     setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
-
-  // ── Reusable section header ──────────────────────────────
-  const SectionHeader = ({ label, count, sectionKey, color = "" }) => (
-    <button
-      onClick={() => toggleSection(sectionKey)}
-      className={"w-full flex items-center gap-2 mb-2 px-1 group " + (isDark ? "text-neutral-500" : "text-zinc-400")}
-    >
-      <span className={"text-[10px] font-semibold uppercase tracking-widest group-hover:opacity-80 transition " + color}>
-        {label}
-      </span>
-      {count > 0 && (
-        <span className={"text-[10px] font-semibold px-1.5 py-0.5 rounded-full " + color +
-          (isDark ? " bg-neutral-800" : " bg-zinc-100")}>
-          {count}
-        </span>
-      )}
-      <div className={"flex-1 h-px " + (isDark ? "bg-neutral-800" : "bg-zinc-200")} />
-      {collapsed[sectionKey]
-        ? <ChevronRight size={11} className="opacity-60" />
-        : <ChevronDown size={11} className="opacity-60" />}
-    </button>
-  );
-
-  // ── Task card ────────────────────────────────────────────
-  const TaskCard = ({ task, icon, iconClass = "", strikethrough = false, opacity = false, sub = null }) => (
-    <div
-      className={
-        "rounded-xl border transition-all duration-150 " +
-        (opacity ? "opacity-50 " : "") +
-        (isDark
-          ? "border-neutral-700/60 bg-neutral-800/40"
-          : "border-zinc-200 bg-white shadow-sm")
-      }
-    >
-      <div className="flex items-start gap-3 px-3 py-2.5">
-        <span className={"flex-shrink-0 mt-0.5 " + iconClass}>{icon}</span>
-        <div className="flex-1 min-w-0">
-          <span className={"text-[13px] leading-snug block " + (strikethrough ? "line-through" : "")}>
-            {task.task}
-          </span>
-          {sub && (
-            <span className="text-[11px] opacity-50 mt-0.5 block">{sub}</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div
@@ -162,7 +162,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
         {/* Overdue */}
         {overdue.length > 0 && (
           <div>
-            <SectionHeader label="Overdue" count={overdue.length} sectionKey="overdue" color="text-red-400" />
+            <SectionHeader label="Overdue" count={overdue.length} sectionKey="overdue" color="text-red-400" isDark={isDark} collapsed={collapsed} toggleSection={toggleSection} />
             {!collapsed.overdue && (
               <div className="space-y-2">
                 {overdue.map(t => {
@@ -174,6 +174,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
                       icon={<AlertTriangle size={14} />}
                       iconClass="text-red-400"
                       sub={daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago`}
+                      isDark={isDark}
                     />
                   );
                 })}
@@ -185,7 +186,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
         {/* Today */}
         {pending.length > 0 && (
           <div>
-            <SectionHeader label="Today" count={pending.length} sectionKey="today" color="text-amber-400" />
+            <SectionHeader label="Today" count={pending.length} sectionKey="today" color="text-amber-400" isDark={isDark} collapsed={collapsed} toggleSection={toggleSection} />
             {!collapsed.today && (
               <div className="space-y-2">
                 {pending.map(t => (
@@ -194,6 +195,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
                     task={t}
                     icon={<Circle size={14} />}
                     iconClass="text-amber-400"
+                    isDark={isDark}
                   />
                 ))}
               </div>
@@ -204,7 +206,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
         {/* Completed */}
         {done.length > 0 && (
           <div>
-            <SectionHeader label="Completed" count={done.length} sectionKey="done" color="text-green-400" />
+            <SectionHeader label="Completed" count={done.length} sectionKey="done" color="text-green-400" isDark={isDark} collapsed={collapsed} toggleSection={toggleSection} />
             {!collapsed.done && (
               <div className="space-y-2">
                 {done.map(t => (
@@ -215,6 +217,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
                     iconClass="text-green-400"
                     strikethrough
                     opacity
+                    isDark={isDark}
                   />
                 ))}
               </div>
@@ -225,7 +228,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
         {/* Upcoming */}
         {upcoming.length > 0 && (
           <div>
-            <SectionHeader label="Coming Up" count={upcoming.length} sectionKey="upcoming" color="text-blue-400" />
+            <SectionHeader label="Coming Up" count={upcoming.length} sectionKey="upcoming" color="text-blue-400" isDark={isDark} collapsed={collapsed} toggleSection={toggleSection} />
             {!collapsed.upcoming && (
               <div className="space-y-2">
                 {upcoming.map(t => (
@@ -236,6 +239,7 @@ function PlannerSidebar({ isDark, isPlannerOpen, setIsPlannerOpen, tasks, onRefr
                     iconClass="text-blue-400"
                     sub={formatDate(t.scheduled_date)}
                     opacity
+                    isDark={isDark}
                   />
                 ))}
               </div>

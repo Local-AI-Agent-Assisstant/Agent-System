@@ -70,9 +70,11 @@ function InlineEmailEditor({ draft, isDark, onSend, onCancel }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
-    setTo(draft?.to || "");
-    setSubject(draft?.subject || "");
-    setBody(draft?.body || "");
+    setTimeout(() => {
+      setTo(draft?.to || "");
+      setSubject(draft?.subject || "");
+      setBody(draft?.body || "");
+    }, 0);
 
     // Auto scroll down when email editor appears
     setTimeout(() => {
@@ -147,7 +149,6 @@ function MessageBubble({
   msg,
   prevMsg,
   isDark,
-  isUser,
   handleCopyMessage,
   copiedMessageId,
   startEditResend,
@@ -156,23 +157,6 @@ function MessageBubble({
   onRetry,
   onResend,
 }) {
-  const label =
-    msg.role === "user"
-      ? "You"
-      : msg.role === "assistant"
-        ? "AI"
-        : msg.role === "system"
-          ? "System"
-          : "Error";
-
-  const bubbleColors = isDark
-    ? isUser
-      ? "bg-neutral-700 text-neutral-50"
-      : "bg-neutral-800 text-neutral-50"
-    : isUser
-      ? "bg-[#e5e7eb] text-[#111827]"
-      : "bg-[#f3f4f6] border border-[#d1d5db] text-[#111827]";
-
   const showDateSeparator =
     !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
 
@@ -262,15 +246,15 @@ function MessageBubble({
                 <div className={
                   "flex items-center gap-3 px-3 py-2 rounded-lg border " +
                   (isDark
-                    ? "bg-amber-500/10 border-amber-500/25"
-                    : "bg-amber-50 border-amber-200")
+                    ? "bg-purple-500/10 border-purple-500/25"
+                    : "bg-purple-50 border-purple-200")
                 }>
                   <span className="text-xl">⚡</span>
                   <div>
-                    <div className={"font-semibold text-sm " + (isDark ? "text-amber-300" : "text-amber-800")}>
+                    <div className={"font-semibold text-sm " + (isDark ? "text-purple-300" : "text-purple-800")}>
                       {msg.meta.routineName}
                     </div>
-                    <div className={"text-[10px] opacity-60 mt-0.5 " + (isDark ? "text-amber-400" : "text-amber-700")}>
+                    <div className={"text-[10px] opacity-60 mt-0.5 " + (isDark ? "text-purple-400" : "text-purple-700")}>
                       Execute saved flow
                     </div>
                   </div>
@@ -344,9 +328,7 @@ function MessageBubble({
             {msg.meta?.isPending ? (
               <>
                 {/* Premium animated thinking status */}
-                {!msg.meta?.emailDraft && (
-                  <ThinkingStatus msg={msg} isDark={isDark} />
-                )}
+                <ThinkingStatus msg={msg} isDark={isDark} />
 
                 {msg.content && (() => {
                   const { reasoning, text } = extractReasoning(msg.content);
@@ -405,12 +387,13 @@ function MessageBubble({
                 {/* Persistent completed-state badge (timing + operation type) */}
                 <ThinkingStatus msg={msg} isDark={isDark} />
 
+
                 {/* AI-attached files (clickable download links) */}
                 {msg.meta?.files?.length > 0 && (
                   <div className="flex flex-col gap-1 mt-1 mb-1">
                     {msg.meta.files.map((file, idx) => {
                       const fileName = typeof file === "string"
-                        ? file.split(/[\/\\]/).pop()
+                        ? file.split(/[/\\]/).pop()
                         : (file.name || file.filename || `file-${idx + 1}`);
                       const fileUrl = typeof file === "string"
                         ? file
@@ -425,7 +408,7 @@ function MessageBubble({
                           try {
                             const res = await fetch(`${baseUrl}/api/open/${fileName}`);
                             if (!res.ok) throw new Error("Failed to open natively");
-                          } catch (err) {
+                          } catch {
                             // Fallback: open in new tab if native open fails
                             window.open(fileUrl, "_blank");
                           }
@@ -479,7 +462,7 @@ function MessageBubble({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {msg.meta.sources.map((src, i) => {
                         let hostname = "Source";
-                        try { hostname = new URL(src.url).hostname.replace(/^www\./, ''); } catch (e) {}
+                        try { hostname = new URL(src.url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
                         
                         return (
                           <a

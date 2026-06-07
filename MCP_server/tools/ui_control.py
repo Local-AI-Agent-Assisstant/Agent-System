@@ -1,7 +1,7 @@
 import time
 import sys
 
-def computer_control(action: str, target_name: str = None, text: str = None, window_name: str = None) -> dict:
+def computer_control(action: str, target_name: str = None, text: str = None, window_name: str = None, automation_id: str = None, class_name: str = None) -> dict:
     """
     Automate the Windows UI by reading the screen, clicking elements, or typing text.
     You can specify window_name to target a specific app (e.g., 'Chrome', 'WhatsApp').
@@ -20,14 +20,18 @@ def computer_control(action: str, target_name: str = None, text: str = None, win
     active_win = None
     if window_name:
         window_name_lower = window_name.lower()
-        # Search for a top-level window containing the specified name (case-insensitive)
-        for win in auto.GetRootControl().GetChildren():
-            if win.Name and window_name_lower in win.Name.lower():
-                active_win = win
+        # Smart Polling: Wait up to 10 seconds for the window to appear
+        for _ in range(20):
+            for win in auto.GetRootControl().GetChildren():
+                if win.Name and window_name_lower in win.Name.lower():
+                    active_win = win
+                    break
+            if active_win:
                 break
+            time.sleep(0.5)
                 
         if not active_win:
-            return {"ok": False, "error": f"Could not find any open window matching '{window_name}'."}
+            return {"ok": False, "error": f"Could not find any open window matching '{window_name}' after waiting 10 seconds."}
         try:
             active_win.SetFocus()
             active_win.SetActive()
@@ -43,15 +47,62 @@ def computer_control(action: str, target_name: str = None, text: str = None, win
     if not active_win:
         return {"ok": False, "error": "No active window found."}
         
+    def find_target():
+        # Helper to find target using name, automation_id, or class_name
+        kwargs = {}
+        if target_name: kwargs['Name'] = target_name
+        if automation_id: kwargs['AutomationId'] = automation_id
+        if class_name: kwargs['ClassName'] = class_name
+        
+        if not kwargs:
+            return None
+            
+        def is_visible(ctrl):
+            try:
+                rect = ctrl.BoundingRectangle
+                return (rect.right - rect.left) > 0 and (rect.bottom - rect.top) > 0
+            except Exception:
+                return False
+
+        # 1. True fuzzy fallback (WalkTree for contains match)
+        # This is actually the safest way for Chrome because it allows us to filter out hidden duplicates
+        if target_name:
+            target_lower = target_name.lower()
+            try:
+                for control, depth in auto.WalkTree(active_win, maxDepth=12):
+                    if control.Name and target_lower in control.Name.lower():
+                        if is_visible(control):
+                            return control
+            except Exception:
+                pass
+                
+        # 2. Try deeper API match if walktree failed or we used id/class
+        try:
+            target = active_win.Control(searchDepth=8, foundIndex=1, matchExact=False, **kwargs)
+            if target.Exists(0, 0) and is_visible(target):
+                return target
+        except Exception:
+            pass
+
+        return None
+
     if action == "read_screen":
         elements = []
         try:
             # Walk the accessibility tree of the current window
             for control, depth in auto.WalkTree(active_win, maxDepth=8):
-                # Filter out invisible or nameless elements
-                if not control.Name:
+                # Filter out invisible or nameless elements if they don't have automation_id either
+                if not control.Name and not control.AutomationId:
                     continue
                     
+                # Skip elements that are completely invisible/hidden
+                try:
+                    rect = control.BoundingRectangle
+                    if (rect.right - rect.left) <= 0 or (rect.bottom - rect.top) <= 0:
+                        continue
+                except Exception:
+                    pass
+
                 # We only care about interactive or informational text controls
                 if control.ControlType in (
                     auto.ControlType.ButtonControl,
@@ -66,7 +117,11 @@ def computer_control(action: str, target_name: str = None, text: str = None, win
                     auto.ControlType.CheckBoxControl,
                 ):
                     control_type_name = control.ControlTypeName
-                    elements.append(f"[{control_type_name}] {control.Name}")
+                    name_str = f"Name: '{control.Name}'" if control.Name else ""
+                    id_str = f"ID: '{control.AutomationId}'" if control.AutomationId else ""
+                    class_str = f"Class: '{control.ClassName}'" if control.ClassName else ""
+                    parts = [p for p in [name_str, id_str, class_str] if p]
+                    elements.append(f"[{control_type_name}] " + ", ".join(parts))
         except Exception as e:
             return {"ok": False, "error": f"Error scanning screen: {str(e)}"}
             
@@ -81,69 +136,49 @@ def computer_control(action: str, target_name: str = None, text: str = None, win
             "elements": unique_elements
         }
         
-    elif action == "click":
-        if not target_name:
-            return {"ok": False, "error": "target_name is required for click."}
+    elif action in ("click", "right_click", "double_click"):
+        target = find_target()
+        if not target:
+            return {"ok": False, "error": "Element not found on the active screen."}
             
-        # First, attempt to find an exact match by name
-        target = active_win.Control(Name=target_name)
-        
-        # If not found immediately, do a slightly deeper partial search
-        if not target.Exists(0, 0):
-            target = active_win.Control(searchDepth=8, foundIndex=1, Name=target_name, matchExact=False)
+        try:
+            target.SetFocus()
+            time.sleep(0.1)
             
-        if target.Exists(0, 0):
-            try:
-                # 1. Bring it into focus
-                target.SetFocus()
-                time.sleep(0.1)
-                
-                # 2. Try native UI automation Invoke (best for real Windows buttons)
+            if action == "click":
+                # Try InvokePattern first for regular clicks
                 try:
                     if hasattr(target, 'InvokePattern') and target.InvokePattern:
                         target.InvokePattern.Invoke()
-                        return {"ok": True, "message": f"Successfully invoked '{target_name}'"}
+                        # Do not return immediately. Fallback to physical click just in case Invoke is ignored by browsers like Chrome.
                 except Exception:
                     pass
-
-                # 3. Try keyboard activation (best for web buttons like Google Meet Camera)
-                try:
-                    auto.SendKeys('{Space}')
-                    time.sleep(0.1)
-                    return {"ok": True, "message": f"Successfully pressed '{target_name}' via keyboard"}
-                except Exception:
-                    pass
+                target.Click(simulateMove=True)
+            elif action == "right_click":
+                target.RightClick(simulateMove=True)
+            elif action == "double_click":
+                target.DoubleClick(simulateMove=True)
                 
-                # 4. Fallback to physical mouse click
-                target.Click(simulateMove=False)
-                return {"ok": True, "message": f"Successfully clicked '{target_name}' in window '{active_win.Name}'"}
-                
-            except Exception as e:
-                return {"ok": False, "error": f"Failed to click: {e}"}
-        else:
-            return {"ok": False, "error": f"Element '{target_name}' not found on the active screen."}
+            return {"ok": True, "message": f"Successfully performed {action} on element in '{active_win.Name}'"}
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to {action}: {e}"}
             
     elif action == "type":
         if text is None:
             return {"ok": False, "error": "text is required for type."}
             
-        if target_name:
-            target = active_win.Control(Name=target_name)
-            if not target.Exists(0, 0):
-                target = active_win.Control(searchDepth=8, foundIndex=1, Name=target_name, matchExact=False)
-                
-            if target.Exists(0, 0):
-                try:
-                    target.SetFocus()
-                    time.sleep(0.1)
-                    target.Click()
-                    time.sleep(0.1)
-                    auto.SendKeys(text, interval=0.01)
-                    return {"ok": True, "message": f"Successfully typed text into '{target_name}'"}
-                except Exception as e:
-                    return {"ok": False, "error": f"Failed to type: {e}"}
-            else:
-                return {"ok": False, "error": f"Text box '{target_name}' not found on the active screen."}
+        target = find_target() if (target_name or automation_id or class_name) else None
+        
+        if target:
+            try:
+                target.SetFocus()
+                time.sleep(0.1)
+                target.Click(simulateMove=False)
+                time.sleep(0.1)
+                auto.SendKeys(text, interval=0.01)
+                return {"ok": True, "message": "Successfully typed text into element"}
+            except Exception as e:
+                return {"ok": False, "error": f"Failed to type into element: {e}"}
         else:
             try:
                 active_win.SetFocus()
@@ -152,10 +187,82 @@ def computer_control(action: str, target_name: str = None, text: str = None, win
                 return {"ok": True, "message": f"Successfully typed text directly into window '{active_win.Name}'"}
             except Exception as e:
                 return {"ok": False, "error": f"Failed to type into window: {e}"}
+                
+    elif action == "hotkey":
+        if text is None:
+            return {"ok": False, "error": "text (hotkey combo like '{Ctrl}c') is required for hotkey."}
+        try:
+            active_win.SetFocus()
+            time.sleep(0.1)
+            
+            import re
+            # Split chained hotkeys (e.g. "{Ctrl}l{Ctrl}c" -> ['{Ctrl}l', '{Ctrl}c'])
+            parts = [p for p in re.split(r'(?=\{)', text) if p]
+            
+            for i, part in enumerate(parts):
+                auto.SendKeys(part)
+                # Inject a 0.3s delay between chained hotkeys so the UI can process them
+                if i < len(parts) - 1:
+                    time.sleep(0.3)
+                    
+            return {"ok": True, "message": f"Successfully sent hotkey: {text}"}
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to send hotkey: {e}"}
+            
+    elif action == "scroll_up":
+        try:
+            active_win.SetFocus()
+            auto.SendKeys('{PageUp}')
+            return {"ok": True, "message": "Scrolled up."}
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to scroll up: {e}"}
+            
+    elif action == "scroll_down":
+        try:
+            active_win.SetFocus()
+            auto.SendKeys('{PageDown}')
+            return {"ok": True, "message": "Scrolled down."}
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to scroll down: {e}"}
+            
+    elif action in ("maximize", "minimize", "restore", "close_window"):
+        try:
+            if action == "maximize" and hasattr(active_win, 'Maximize'):
+                active_win.Maximize()
+            elif action == "minimize" and hasattr(active_win, 'Minimize'):
+                active_win.Minimize()
+            elif action == "restore" and hasattr(active_win, 'Restore'):
+                active_win.Restore()
+            elif action == "close_window":
+                if hasattr(active_win, 'WindowPattern') and active_win.WindowPattern:
+                    active_win.WindowPattern.Close()
+                else:
+                    auto.SendKeys('{Alt}{F4}')
+            return {"ok": True, "message": f"Successfully performed {action} on window '{active_win.Name}'"}
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to {action} window: {e}"}
+            
+    elif action == "read_value":
+        target = find_target()
+        if not target:
+            return {"ok": False, "error": "Element not found to read value."}
+        try:
+            val = None
+            if hasattr(target, 'ValuePattern') and target.ValuePattern:
+                val = target.ValuePattern.Value
+            elif hasattr(target, 'TogglePattern') and target.TogglePattern:
+                val = str(target.TogglePattern.ToggleState)
+            else:
+                val = target.Name
+            return {"ok": True, "value": val}
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to read value: {e}"}
             
     elif action == "wait":
         try:
             wait_time = float(text) if text else 2.0
+            if wait_time > 10.0:
+                wait_time = 10.0
             time.sleep(wait_time)
             return {"ok": True, "message": f"Waited for {wait_time} seconds."}
         except ValueError:
@@ -178,4 +285,4 @@ def computer_control(action: str, target_name: str = None, text: str = None, win
             return {"ok": False, "error": f"Failed to set clipboard: {e}"}
 
     else:
-        return {"ok": False, "error": f"Unknown action: {action}. Use read_screen, click, type, wait, get_clipboard, or set_clipboard."}
+        return {"ok": False, "error": f"Unknown action: {action}."}

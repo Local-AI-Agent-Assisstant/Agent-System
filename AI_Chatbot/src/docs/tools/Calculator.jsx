@@ -45,7 +45,7 @@ const FUNCTIONS = [
     },
     {
         name: "convert currency",
-        desc: "Convert between measurement systems, temperatures, time formats, and supported quantities.",
+        desc: "Convert between supported currencies using live exchange rate information.",
     },
 ];
 
@@ -62,7 +62,7 @@ export default function Calculator() {
                     Calculator & Conversion
                 </h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
-                    Solve equations, evaluate mathematical expressions, and perform unit or currency conversions through the AI assistant.
+                    Solve equations, evaluate mathematical expressions, and perform unit or currency conversions through the assistant.
                 </p>
             </section>
 
@@ -85,10 +85,10 @@ export default function Calculator() {
                 </div>
             </section>
 
-            {/* Tool Functions */}
+            {/* Available Functions */}
             <section>
                 <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">
-                    Tool Functions
+                    Available Functions
                 </h2>
 
                 <div className="rounded-xl border border-zinc-200 dark:border-neutral-800 bg-zinc-100 dark:bg-neutral-800/30 overflow-hidden">
@@ -174,10 +174,10 @@ export default function Calculator() {
             {/* Next */}
             <section className="pt-4 border-t border-zinc-200 dark:border-neutral-800">
                 <Link
-                    to="/docs/tools/web-search"
+                    to="/docs/tools/write-files"
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all"
                 >
-                    Next: Web Search <ArrowRight size={14} />
+                    Next: File Management <ArrowRight size={14} />
                 </Link>
             </section>
         </div>

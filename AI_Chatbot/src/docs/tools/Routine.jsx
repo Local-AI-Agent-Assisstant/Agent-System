@@ -16,7 +16,7 @@ const FEATURES = [
     {
         icon: Play,
         title: "One-Click Execution",
-        desc: "Launch complete workflows instantly from the interface.",
+        desc: "Execute complete workflows directly from the assistant interface.",
     },
     {
         icon: Zap,
@@ -35,11 +35,11 @@ export default function Routine() {
                     Workflow Automation
                 </div>
                 <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-neutral-100">
-                    Routine Manager
+                    Routine
                 </h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
-                    Create reusable AI-powered workflows that automate repetitive actions,
-                    multi-step tasks, and structured assistant interactions.
+                    Create reusable assistant workflows that automate repetitive actions,
+                    multi-step tasks, and structured interactions.
                 </p>
             </section>
 
@@ -98,7 +98,7 @@ export default function Routine() {
                         "Search the web for AI news",
                         "Summarize the latest updates",
                         "Generate a short productivity report",
-                        "Generate and organize the final workflow output"
+                        "Compile and organize the final workflow results"
                     ].map((step, i) => (
                         <div
                             key={i}
@@ -130,10 +130,10 @@ export default function Routine() {
             {/* Next */}
             <section className="pt-4 border-t border-zinc-200 dark:border-neutral-800">
                 <Link
-                    to="/docs/tools/deep-search"
+                    to="/docs/tools/task-planner"
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all"
                 >
-                    Next: Deep Search <ArrowRight size={14} />
+                    Next: Task Planner <ArrowRight size={14} />
                 </Link>
             </section>
         </div>

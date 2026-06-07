@@ -21,6 +21,10 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
   const [reasoningHistory, setReasoningHistory] = useState([]);   // past reasonings
   const [voiceHistory, setVoiceHistory] = useState([]);           // finalized entries only
   
+  // Mute state
+  const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(false);
+  
   // Voice interrupt setting
   const [voiceInterruptEnabled, setVoiceInterruptEnabled] = useState(false);
   const voiceInterruptEnabledRef = useRef(false);
@@ -33,7 +37,6 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
 
   const wsRef = useRef(null);
   const micCtxRef = useRef(null);
-  const playCtxRef = useRef(null);
   const micStreamRef = useRef(null);
   const workletRef = useRef(null);
   const sourceNodeRef = useRef(null);
@@ -72,16 +75,13 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
           timestamp: Date.now(),
         }]);
       }
-      // Commit reasoning to history if present
-      if (agentReasoningRef.current.length > 0) {
-        setReasoningHistory(prev => [...prev, ...agentReasoningRef.current]);
-      }
+      // NOTE: Do NOT flush reasoning to history here — it stays visible
+      // in the live panel until the user starts a new command.
+      // History commit happens in final_transcript.
 
       // Clear live stream text and automatically start hearing again
       setAgentStreamText("");
       agentChunksRef.current = "";
-      setAgentReasoning([]);
-      agentReasoningRef.current = [];
 
       // Go back to listening when audio finishes
       setVoiceState("listening");
@@ -159,7 +159,7 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
           }
         }
         if (agentReasoningRef.current.length > 0) {
-          setReasoningHistory(prev => [...prev, ...agentReasoningRef.current]);
+          setReasoningHistory(prev => [...prev, [...agentReasoningRef.current]]);
         }
         setAgentStreamText("");
         agentChunksRef.current = "";
@@ -190,6 +190,12 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
           if (cbTranscriptRef.current) cbTranscriptRef.current(msg.text);
         }
         setVoiceState("thinking");
+        // Move previous reasoning to history, then clear for fresh panel
+        if (agentReasoningRef.current.length > 0) {
+          setReasoningHistory(prev => [...prev, [...agentReasoningRef.current]]);
+        }
+        setAgentReasoning([]);
+        agentReasoningRef.current = [];
         break;
 
       case "agent_thinking":
@@ -230,15 +236,9 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
           agentChunksRef.current = finalText;
           setAgentStreamText(finalText);
           
-          // Flush any current reasoning to history right now so it's not lost
-          if (agentReasoningRef.current.length > 0) {
-            setReasoningHistory(prev => {
-              // Avoid duplicates if already flushed
-              return [...prev, ...agentReasoningRef.current];
-            });
-            setAgentReasoning([]);
-            agentReasoningRef.current = [];
-          }
+          
+          // NOTE: Do NOT flush reasoning to history here. It stays visible in the
+          // live panel. History commit happens only in final_transcript.
 
           if (msg.reasoning) {
             setAgentReasoning([msg.reasoning]);
@@ -370,7 +370,7 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
       ws.onerror = () => { setVoiceError("Connection lost."); if (stopRef.current) stopRef.current(); };
       ws.onopen = () => {
         // Send initial interrupt preference
-        ws.send(JSON.stringify({ type: "toggle_voice_interrupt", enabled: voiceInterruptEnabled }));
+        ws.send(JSON.stringify({ type: "toggle_voice_interrupt", enabled: voiceInterruptEnabledRef.current }));
       };
       wsRef.current = ws;
     } catch {
@@ -415,7 +415,9 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
         
         const worklet = new AudioWorkletNode(ctx, 'pcm-processor');
         worklet.port.onmessage = (e) => {
-          if (wsRef.current?.readyState === WebSocket.OPEN && !isPlayingRef.current) {
+          // Don't send audio data when muted
+          if (isMutedRef.current) return;
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
             // e.data is the copied Int16Array. Send as Blob to prevent WebSocket native crashes
             wsRef.current.send(new Blob([e.data.buffer]));
           }
@@ -445,14 +447,37 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
     return true;
   }, [handleMessage, sessionId]);
 
+  // ── Toggle Mute ──
+  const toggleMute = useCallback(() => {
+    const next = !isMutedRef.current;
+    isMutedRef.current = next;
+    setIsMuted(next);
+
+    // Tell server so it can ignore any buffered audio / stop VAD
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: next ? "mute" : "unmute" }));
+    }
+
+    // Also mute/unmute the actual mic tracks as an extra guarantee
+    if (micStreamRef.current) {
+      micStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !next; });
+    }
+  }, []);
+
   // ── Stop ──
   const stop = useCallback(() => {
     killPlayback();
+
+    // Tell the server to fully terminate the voice session before we tear down
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try { wsRef.current.send(JSON.stringify({ type: "stop" })); } catch { /* ignore */ }
+    }
+
     if (workletRef.current) { try { workletRef.current.disconnect(); } catch { /* ignore */ } workletRef.current = null; }
     if (sourceNodeRef.current) { try { sourceNodeRef.current.disconnect(); } catch { /* ignore */ } sourceNodeRef.current = null; }
     if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(t => t.stop()); micStreamRef.current = null; }
     if (micCtxRef.current?.state !== "closed") { try { micCtxRef.current?.close(); } catch { /* ignore */ } micCtxRef.current = null; }
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    if (wsRef.current) { try { wsRef.current.close(); } catch { /* ignore */ } wsRef.current = null; }
     setVoiceState("idle");
     setVoiceError("");
     setPartialTranscript("");
@@ -460,6 +485,9 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
     setAgentReasoning([]);
     agentChunksRef.current = "";
     agentReasoningRef.current = [];
+    // Reset mute state for next session
+    setIsMuted(false);
+    isMutedRef.current = false;
   }, [killPlayback]);
 
   // Keep refs in sync so callbacks can call these functions safely before declaration order
@@ -472,7 +500,7 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
     setVoiceState("idle");
     setVoiceHistory([]);
     setReasoningHistory([]);
-    const ok = await start();
+    await start();
     // We purposefully DO NOT close the modal on error, so the user can see the error message.
     // if (!ok) setIsVoiceMode(false);
   }, [start]);
@@ -492,6 +520,7 @@ export function useVoiceChat({ sessionId = "default_user", onUserTranscript, onA
   return {
     isVoiceMode, voiceState, voiceError,
     partialTranscript, agentStreamText, agentReasoning, reasoningHistory, voiceHistory,
+    isMuted, toggleMute,
     voiceInterruptEnabled, toggleVoiceInterrupt,
     openVoiceChat, closeVoiceChat, stopSpeaking, interruptAI,
     forceListening,

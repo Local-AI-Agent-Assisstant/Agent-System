@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Network, Server, Cpu, GitBranch, ArrowRight, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import ArchitectureDiagram from "../assets/architecture-diagram.png";
@@ -15,7 +16,7 @@ const LAYERS = [
         color: "text-sky-400",
         bg: "bg-sky-500/10",
         title: "Backend API",
-        desc: "Processes requests, manages communication, and streams responses in real time.",
+        desc: "Processes requests, manages assistant communication, and streams responses in real time.",
     },
     {
         icon: Server,
@@ -29,11 +30,12 @@ const LAYERS = [
         color: "text-amber-400",
         bg: "bg-amber-500/10",
         title: "AI Models",
-        desc: "Power conversational responses, reasoning, voice interactions, and contextual understanding.",
+        desc: "Power conversational responses, reasoning workflows, voice interactions, and contextual understanding.",
     },
 ];
 
 export default function McpArchitecture() {
+    const [isOpen, setIsOpen] = useState(false);
     return (
         <div className="space-y-16">
             {/* Header */}
@@ -51,7 +53,7 @@ export default function McpArchitecture() {
                 </p>
             </section>
 
-            {/* Architecture layers */}
+            {/* Architecture */}
             <section>
                 <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-6">
                     Core Components
@@ -104,13 +106,29 @@ export default function McpArchitecture() {
                     <img
                         src={ArchitectureDiagram}
                         alt="AI Assistant Architecture Diagram"
-                        className="w-full object-cover transition-transform duration-300 hover:scale-[1.01]"
+                        onClick={() => setIsOpen(true)}
+                        className="w-full object-cover cursor-zoom-in transition-transform duration-300 hover:scale-[1.01]"
                     />
                 </div>
+
                 <p className="text-[11px] text-zinc-500 dark:text-neutral-600 text-center">
-                    Simplified overview of the assistant workflow and integrated systems.
+                    Simplified overview of the assistant architecture, workflow, and integrated systems.
                 </p>
             </section>
+
+            {/* Fullscreen Preview */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                    <img
+                        src={ArchitectureDiagram}
+                        alt="Preview"
+                        className="w-auto h-auto max-w-[85vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                    />
+                </div>
+            )}
 
             {/* Assistant Workflow */}
             <section>

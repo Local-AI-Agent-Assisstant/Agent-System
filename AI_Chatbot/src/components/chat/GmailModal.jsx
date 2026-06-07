@@ -4,27 +4,29 @@ function GmailModal({ isDark, show, onClose }) {
     const stored = JSON.parse(localStorage.getItem("gmail_credentials") || "{}");
 
     const [email, setEmail] = useState(stored.email || "");
-    const [password, setPassword] = useState("");
-    // locked only when we have both email (persisted) and password (in-state)
+    const [password, setPassword] = useState(stored.password || "");
+    // locked only when we have both email and password (persisted)
     const [locked, setLocked] = useState(false);
 
     useEffect(() => {
         if (show) {
-            const creds = JSON.parse(localStorage.getItem("gmail_credentials") || "{}");
-            setEmail(creds.email || "");
-            // Password is never stored — always starts empty so user re-enters it
-            setPassword("");
-            setLocked(false);
+            setTimeout(() => {
+                const creds = JSON.parse(localStorage.getItem("gmail_credentials") || "{}");
+                setEmail(creds.email || "");
+                setPassword(creds.password || "");
+                // Lock by default if we already have credentials saved
+                setLocked(!!creds.email && !!creds.password);
+            }, 0);
         }
     }, [show]);
 
     if (!show) return null;
 
     const handleSave = () => {
-        // Only persist the email — never the password
+        // Persist both email and password
         localStorage.setItem(
             "gmail_credentials",
-            JSON.stringify({ email })
+            JSON.stringify({ email, password })
         );
         setLocked(true);
     };

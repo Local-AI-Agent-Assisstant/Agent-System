@@ -11,7 +11,7 @@ import McpArchitecture from "./docs/McpArchitecture";
 import FilesUploads from "./docs/FilesUploads";
 import Troubleshooting from "./docs/Troubleshooting";
 import ScrollToTop from "./common/ScrollToTop";
-import WebSearch from "./docs/tools/DeepSearch";
+import WebSearch from "./docs/tools/WebSearch";
 import Calculator from "./docs/tools/Calculator";
 import Email from "./docs/tools/Email";
 import SystemCommands from "./docs/tools/SystemCommands";
@@ -19,6 +19,8 @@ import WriteFiles from "./docs/tools/WriteFiles";
 import ThinkerMode from "./docs/ThinkerMode";
 import Routine from "./docs/tools/Routine";
 import Weather from "./docs/tools/weather";
+import ComputerControl from "./docs/tools/ComputerControl";
+import SystemActions from "./docs/tools/SystemActions";
 
 function App() {
   return (
@@ -42,9 +44,12 @@ function App() {
           <Route path="tools/web-search" element={<WebSearch />} />
           <Route path="tools/calculator" element={<Calculator />} />
           <Route path="tools/email" element={<Email />} />
+          <Route path="tools/weather" element={<Weather />} />
           <Route path="tools/system-commands" element={<SystemCommands />} />
           <Route path="tools/write-files" element={<WriteFiles />} />
           <Route path="tools/routine" element={<Routine />} />
+          <Route path="tools/computer-control" element={<ComputerControl />} />
+          <Route path="tools/system-actions" element={<SystemActions />} />
         </Route>
       </Routes>
     </HashRouter>

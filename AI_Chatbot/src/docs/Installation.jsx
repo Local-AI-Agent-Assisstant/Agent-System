@@ -31,7 +31,7 @@ venv\\Scripts\\activate`,
     {
         number: "04",
         title: "Install and configure the LLM runtime",
-        desc: "Set up a local language model runtime and download at least one model.",
+        desc: "Set up a local language model runtime and download at least one compatible model.",
         code:
             `ollama pull [MODEL NAME]`,
     },
@@ -75,6 +75,10 @@ const OPTIONAL_REQ = [
         name: "Piper TTS",
         url: "https://github.com/rhasspy/piper",
     },
+    {
+        name: "Tesseract OCR",
+        url: "https://github.com/UB-Mannheim/tesseract/wiki",
+    },
 ];
 
 const LLM_RUNTIMES = [
@@ -87,8 +91,8 @@ const LLM_RUNTIMES = [
         url: "https://lmstudio.ai/",
     },
     {
-        name: "Hugging Face",
-        url: "https://huggingface.co/",
+        name: "Llama.cpp",
+        url: "https://github.com/ggml-org/llama.cpp",
     },
     {
         name: "Custom local runtimes",
@@ -215,7 +219,7 @@ export default function GettingStarted() {
             <section>
                 <div className="flex items-center gap-2 mb-4">
                     <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200">
-                        Optional Dependencies
+                        Optional Components
                     </h2>
 
                     <span className="text-xs text-zinc-500 dark:text-neutral-500">
@@ -356,15 +360,11 @@ export default function GettingStarted() {
                     </p>
 
                     <p className="text-xs text-zinc-600 dark:text-neutral-400 leading-relaxed mb-2">
-                        Local runtimes require downloading at least one compatible language model before starting the application.
+                        Local runtimes require downloading at least one language model before starting the application.
                     </p>
-
                     <p className="text-xs text-zinc-600 dark:text-neutral-400 leading-relaxed mb-2">
-                        Cloud-based providers require valid API credentials and a configured model endpoint.
+                        Large language models may require significant RAM or GPU resources depending on the selected model size.
                     </p>
-                    <code className="text-amber-400 font-mono text-xs">
-                        ollama pull [MODEL NAME]
-                    </code>
                 </div>
             </section>
 

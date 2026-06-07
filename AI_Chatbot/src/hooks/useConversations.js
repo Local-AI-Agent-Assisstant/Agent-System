@@ -36,7 +36,7 @@ function loadFromLocal() {
     }
 }
 
-export function useConversations(setMessages, messages) {
+export function useConversations(setMessages) {
     const [conversations, setConversations] = useState([]);
     const [activeConversationId, setActiveConversationId] = useState(null);
     const [editingConversationId, setEditingConversationId] = useState(null);
@@ -48,11 +48,13 @@ export function useConversations(setMessages, messages) {
 
     // Load conversations from localStorage on mount
     useEffect(() => {
-        const stored = loadFromLocal();
-        if (stored && Array.isArray(stored) && stored.length > 0) {
-            setConversations(stored);
-        }
-        setIsHydrated(true);
+        setTimeout(() => {
+            const stored = loadFromLocal();
+            if (stored && Array.isArray(stored) && stored.length > 0) {
+                setConversations(stored);
+            }
+            setIsHydrated(true);
+        }, 0);
     }, []);
 
     // Persist active conversation ID on change
@@ -65,26 +67,28 @@ export function useConversations(setMessages, messages) {
     useEffect(() => {
         if (!isHydrated) return;
 
-        const stored = loadFromLocal();
-        const convs = stored && Array.isArray(stored) ? stored : [];
+        setTimeout(() => {
+            const stored = loadFromLocal();
+            const convs = stored && Array.isArray(stored) ? stored : [];
 
-        const topChat = convs.length > 0 ? convs[0] : null;
+            const topChat = convs.length > 0 ? convs[0] : null;
 
-        if (topChat && (topChat.messages?.length === 0 || topChat.title.toLowerCase() === "new chat")) {
-            setConversations(convs);
-            setActiveConversationId(topChat.id);
-            setMessages(topChat.messages || []);
-        } else {
-            const fresh = createConversation();
-            const next = [fresh, ...convs];
-            setConversations(next);
-            saveToLocal(next, fresh.id);
-            setActiveConversationId(fresh.id);
-            setMessages([]);
-        }
+            if (topChat && (topChat.messages?.length === 0 || topChat.title.toLowerCase() === "new chat")) {
+                setConversations(convs);
+                setActiveConversationId(topChat.id);
+                setMessages(topChat.messages || []);
+            } else {
+                const fresh = createConversation();
+                const next = [fresh, ...convs];
+                setConversations(next);
+                saveToLocal(next, fresh.id);
+                setActiveConversationId(fresh.id);
+                setMessages([]);
+            }
 
-        setChatSuggestions(pickRandomSuggestions());
-    }, [isHydrated]);
+            setChatSuggestions(pickRandomSuggestions());
+        }, 0);
+    }, [isHydrated, setMessages]);
 
 
 

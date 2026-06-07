@@ -1,5 +1,6 @@
 import { Mic, Volume2, Brain, AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import VoicePreview from "../assets/Voice-preview.mp4";
 
 const FLOW_STEPS = [
     {
@@ -10,7 +11,7 @@ const FLOW_STEPS = [
     {
         icon: Brain,
         label: "Speech recognition",
-        desc: "The assistant converts spoken audio into text for processing.",
+        desc: "The assistant converts spoken audio into text for AI processing and tool execution.",
     },
     {
         icon: Brain,
@@ -70,8 +71,7 @@ export default function VoiceAssistant() {
                     Voice Assistant
                 </h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
-                    Interact with the assistant using real-time voice input, speech recognition,
-                    spoken AI responses, and integrated voice-driven tool execution.
+                    Interact with the assistant through real-time voice conversations, speech recognition, spoken AI responses, and integrated voice-driven tool execution.
                 </p>
             </section>
 
@@ -118,7 +118,33 @@ export default function VoiceAssistant() {
                 </div>
             </section>
 
-            {/* Interface Preview */}
+            {/* Voice Preview */}
+            <section className="space-y-3">
+                <div>
+                    <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-1">
+                        Voice Assistant Preview
+                    </h2>
+
+                    <p className="text-xs text-zinc-500 dark:text-neutral-500">
+                        Preview of the Voice Assistant.
+                    </p>
+                </div>
+
+                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        disablePictureInPicture
+                        controls={false}
+                        controlsList="nodownload nofullscreen noremoteplayback"
+                        className="w-full object-cover pointer-events-none transition-transform duration-300 hover:scale-[1.01]"
+                    >
+                        <source src={VoicePreview} type="video/mp4" />
+                    </video>
+                </div>
+            </section>
 
             {/* Activating voice mode */}
             <section>
@@ -149,7 +175,7 @@ export default function VoiceAssistant() {
                 <div>
                     <p className="text-sm font-medium text-amber-300 mb-1">Tool permissions in voice mode</p>
                     <p className="text-xs text-zinc-600 dark:text-neutral-400 leading-relaxed">
-                        Voice mode supports tool permission handling, allowing users to approve or deny tool requests during active sessions.
+                        allowing users to approve or deny assistant tool requests during active voice sessions.
                     </p>
                 </div>
             </section>

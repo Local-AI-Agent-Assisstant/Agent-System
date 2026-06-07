@@ -165,8 +165,7 @@ export default function Troubleshooting() {
                     Troubleshooting
                 </h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
-                    Common issues and how to resolve them. If your problem isn't listed here,
-                    check the backend terminal logs first. They usually point directly to the cause.
+                    Common issues and how to resolve them. If your issue isn't listed here, check the backend terminal logs first. They usually point directly to the cause.
                 </p>
             </section>
 
@@ -276,7 +275,7 @@ export default function Troubleshooting() {
 
                     <div className="flex flex-wrap gap-3">
                         <a
-                            href="YOUR_GITHUB_LINK"
+                            href="https://github.com/Local-AI-Agent-Assisstant/Agent-System"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-xs font-medium transition-colors"

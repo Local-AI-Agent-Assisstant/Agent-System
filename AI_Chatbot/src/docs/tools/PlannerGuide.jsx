@@ -8,7 +8,7 @@ const COMMANDS = [
     { phrase: "Move this task to tomorrow", result: "Defers the task to the next day" },
     { phrase: "What do I have today?", result: "Lists all tasks scheduled for today" },
     { phrase: "Delete the meeting task", result: "Removes the task permanently" },
-    { phrase: "Schedules a future planner task", result: "Creates a task with a future date" },
+    { phrase: "Remind me to finish the presentation tomorrow", result: "Creates a task with a future date" },
 ];
 
 const FEATURES = [
@@ -47,7 +47,7 @@ export default function PlannerGuide() {
                     Task Planner
                 </h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
-                    Manage tasks, schedules, and productivity workflows directly through conversational interaction with the AI assistant.
+                    Manage tasks, schedules, and productivity workflows directly through conversational interaction with the assistant.
                 </p>
             </section>
 
@@ -132,10 +132,10 @@ export default function PlannerGuide() {
             {/* Next */}
             <section className="pt-4 border-t border-zinc-200 dark:border-neutral-800">
                 <Link
-                    to="/docs/tools/routine"
+                    to="/docs/tools/email"
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all"
                 >
-                    Next: Routine Manager <ArrowRight size={14} />
+                    Next: Email Integration <ArrowRight size={14} />
                 </Link>
             </section>
         </div>

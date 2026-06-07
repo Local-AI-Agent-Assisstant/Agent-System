@@ -61,7 +61,7 @@ function getDotColor(action, isThinker, isDark) {
   return isDark ? "text-neutral-400" : "text-neutral-500";
 }
 
-// ─── Thinker step icon ────────────────────────────────────────────────────────
+// ─── Thinker step icon ──────────────────────────────────────────────────────────────────────
 function stepIcon(step) {
   const s = (step || "").toLowerCase();
   if (s.includes("plan"))      return "◆";
@@ -69,6 +69,7 @@ function stepIcon(step) {
   if (s.includes("finaliz"))   return "✦";
   if (s.includes("execut"))    return "→";
   if (s.includes("observ"))    return "◎";
+  if (s.startsWith("using "))  return "▶";
   return "·";
 }
 
@@ -107,62 +108,38 @@ export default function ThinkingStatus({ msg, isDark }) {
     }
   }, [isPending, isThinker, durationMs]);
 
-  // ── 1. STREAMING — content is arriving, no status pill ──────────────────────
-  if (isPending && hasContent) return null; // streaming cursor already in MessageBubble
+  // ── 1. Determine Visibility ────────────────────────────────────────────────
+  // The panel should only appear for tools, thinker, multi-step, etc.
+  // Normal conversational replies without tools should not show a reasoning panel.
+  const hasReasoningSteps = thinkerSteps.length > 0;
+  
+  // Hide completely if it's just a normal reply actively streaming
+  if (isPending && hasContent && !isThinker && !hasReasoningSteps) return null;
 
-  // ── 2. ACTIVE (pending, no content yet) ────────────────────────────────────
-  if (isPending && !hasContent) {
-    const dotColor = getDotColor(action, isThinker, isDark);
+  // ── 2. Determine State & Labels ────────────────────────────────────────────
+  let badgeLabel = null;
+  let isCompletedState = false;
 
-    return (
-      <div className="flex flex-col gap-2 mt-1">
-
-        {/* ── Active status — bare, no bubble ── */}
-        <div className="inline-flex items-center gap-2.5 self-start">
-          {/* Breathing dots */}
-          <span className={"flex items-center gap-[3px] " + dotColor}>
-            <span className="thinking-dot" />
-            <span className="thinking-dot" />
-            <span className="thinking-dot" />
-          </span>
-
-          {/* Label */}
-          <span className={
-            "text-[14.5px] font-medium tracking-tight " +
-            (isThinker
-              ? (isDark ? "text-violet-300" : "text-violet-600")
-              : (isDark ? "text-neutral-400" : "text-neutral-500"))
-          }>
-            {action || "Thinking…"}
-          </span>
-        </div>
-
-        {/* ── Thinker reasoning panel (ONLY for deep_think) ── */}
-        {isThinker && thinkerSteps.length > 0 && (
-          <ThinkerPanel
-            steps={thinkerSteps}
-            isActive={true}
-            isOpen={thinkerOpen}
-            onToggle={() => setThinkerOpen(v => !v)}
-            isDark={isDark}
-            stepsEndRef={stepsEndRef}
-          />
-        )}
-      </div>
-    );
+  if (isPending) {
+    // Active / Streaming state
+    badgeLabel = action || "Thinking…";
+  } else {
+    // Completed state
+    badgeLabel = getCompletedLabel(completedAction, durationStr, isThinker);
+    isCompletedState = true;
+    if (!badgeLabel && !isThinker) return null;
   }
 
-  // ── 3. COMPLETED — show persistent badge + optional thinker panel ───────────
-  const completedLabel = getCompletedLabel(completedAction, durationStr, isThinker);
-  if (!completedLabel && !isThinker) return null;
+  // ── 3. Render ─────────────────────────────────────────────────────────────
+  const showPanel = isThinker && hasReasoningSteps;
+  if (!badgeLabel && !showPanel && !isPending) return null;
 
   return (
-    <div className="flex flex-col gap-1.5 mt-2">
-
-      {/* Completed badge */}
-      {completedLabel && (
+    <div className="flex flex-col gap-1.5 mt-2 mb-1">
+      {/* ── Compact Status Badge (Clickable if there's reasoning) ── */}
+      {badgeLabel && (
         <button
-          onClick={isThinker && thinkerSteps.length > 0 ? () => setThinkerOpen(v => !v) : undefined}
+          onClick={showPanel ? () => setThinkerOpen(v => !v) : undefined}
           className={
             "status-badge-enter inline-flex items-center gap-1.5 self-start " +
             "px-3 py-1 rounded-full text-[12px] font-medium border " +
@@ -175,15 +152,24 @@ export default function ThinkingStatus({ msg, isDark }) {
                   ? "bg-neutral-800/60 border-neutral-700/50 text-neutral-500 cursor-default"
                   : "bg-zinc-100/80 border-zinc-200 text-zinc-400 cursor-default")
             ) +
-            (isThinker && thinkerSteps.length > 0 ? " cursor-pointer" : "")
+            (showPanel ? " cursor-pointer" : "")
           }
         >
-          {isThinker
-            ? <Brain size={10} className="opacity-80 flex-shrink-0" />
-            : <span className="opacity-70 text-[9px]">✓</span>
-          }
-          <span>{completedLabel}</span>
-          {isThinker && thinkerSteps.length > 0 && (
+          {isCompletedState ? (
+            isThinker 
+              ? <Brain size={10} className="opacity-80 flex-shrink-0" /> 
+              : <span className="opacity-70 text-[9px]">✓</span>
+          ) : (
+            <span className={"flex items-center gap-[3px] " + getDotColor(action, isThinker, isDark)}>
+              <span className="thinking-dot w-[3.5px] h-[3.5px]" />
+              <span className="thinking-dot w-[3.5px] h-[3.5px]" />
+              <span className="thinking-dot w-[3.5px] h-[3.5px]" />
+            </span>
+          )}
+          
+          <span>{badgeLabel}</span>
+          
+          {showPanel && (
             thinkerOpen
               ? <ChevronUp size={10} className="opacity-60 ml-0.5" />
               : <ChevronDown size={10} className="opacity-60 ml-0.5" />
@@ -191,11 +177,11 @@ export default function ThinkingStatus({ msg, isDark }) {
         </button>
       )}
 
-      {/* Thinker history panel */}
-      {isThinker && thinkerSteps.length > 0 && (
+      {/* ── Reasoning Panel ── */}
+      {showPanel && (
         <ThinkerPanel
           steps={thinkerSteps}
-          isActive={false}
+          isActive={isPending}
           isOpen={thinkerOpen}
           onToggle={() => setThinkerOpen(v => !v)}
           isDark={isDark}
@@ -250,23 +236,45 @@ function ThinkerPanel({ steps, isActive, isOpen, onToggle, isDark, stepsEndRef }
 
       {/* Step list */}
       <div className="px-4 pb-4 flex flex-col gap-1.5 max-h-72 overflow-y-auto no-scrollbar">
-        {steps.map((step, i) => (
-          <div
-            key={i}
-            className={
-              "thinker-step-enter flex items-baseline gap-2.5 text-[13.5px] leading-relaxed " +
-              (isDark ? "text-neutral-400" : "text-zinc-500")
-            }
-          >
-            <span className={
-              "flex-shrink-0 text-[12px] font-mono " +
-              (isDark ? "text-violet-400/70" : "text-violet-500/70")
-            }>
-              {stepIcon(step)}
-            </span>
-            <span>{step}</span>
-          </div>
-        ))}
+        {steps.map((step, i) => {
+          // Parse "Using tool_name(args)" steps for richer rendering
+          const usingMatch = step.match(/^Using\s+([^(]+)(\(.*\))?$/);
+          return (
+            <div
+              key={i}
+              className={
+                "thinker-step-enter flex items-baseline gap-2.5 text-[13px] leading-relaxed " +
+                (isDark ? "text-neutral-400" : "text-zinc-500")
+              }
+            >
+              <span className={
+                "flex-shrink-0 text-[12px] font-mono " +
+                (isDark ? "text-violet-400/70" : "text-violet-500/70")
+              }>
+                {stepIcon(step)}
+              </span>
+              {usingMatch ? (
+                <span className="flex flex-wrap items-baseline gap-0.5">
+                  <span className={isDark ? "text-neutral-300" : "text-zinc-400"}>Using</span>
+                  {" "}
+                  <span className={"font-semibold font-mono text-[12.5px] " + (isDark ? "text-emerald-400" : "text-emerald-600")}>
+                    {usingMatch[1].trim()}
+                  </span>
+                  {usingMatch[2] && (
+                    <span className={
+                      "font-mono text-[11px] px-1.5 py-0.5 rounded " +
+                      (isDark ? "bg-neutral-800 text-neutral-400" : "bg-zinc-100 text-zinc-500")
+                    }>
+                      {usingMatch[2]}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span>{step}</span>
+              )}
+            </div>
+          );
+        })}
         <div ref={stepsEndRef} />
       </div>
     </div>

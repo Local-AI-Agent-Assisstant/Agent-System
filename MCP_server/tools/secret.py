@@ -7,5 +7,4 @@ logger = logging.getLogger(__name__)
 
 def get_secret_word() -> str:
     logger.info("Tool called: get_secret_word()")
-    return random.choice(["Dawoooood", "Amrooooo", "fama7aga"])
-
+    return random.choice(["Dawoooood", "Amrooooo", "AI Agenttttt"])

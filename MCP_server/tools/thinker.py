@@ -3,7 +3,7 @@ thinker.py
 A real coded autonomous agent using a ReAct architecture.
 """
 
-import json
+
 from tools.prompts import TOOL_SYSTEM_PROMPT
 
 MAX_STEPS = 25  # Hard cap to prevent infinite loops

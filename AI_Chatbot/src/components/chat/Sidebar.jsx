@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Plus, MessageSquare, Pencil, Trash2, Check, X, Search, Clock } from "lucide-react";
 
 // ── Relative time formatter ───────────────────────────────────
@@ -50,26 +50,6 @@ function Sidebar({
 }) {
   const [search, setSearch] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState({});
-  const [activeProvider, setActiveProvider] = useState("ollama");
-
-  useEffect(() => {
-    fetch("http://localhost:8000/api/providers")
-      .then(res => res.json())
-      .then(data => {
-        if(data.active) setActiveProvider(data.active);
-      }).catch(()=>{});
-  }, []);
-
-  const handleProviderSwitch = async (provider) => {
-    const formData = new FormData();
-    formData.append("provider", provider);
-    await fetch("http://localhost:8000/api/providers/switch", {
-      method: "POST",
-      body: formData
-    });
-    setActiveProvider(provider);
-    window.location.reload(); // Reload to refresh model lists in header
-  };
 
   const toggleGroup = (label) =>
     setCollapsedGroups(prev => ({ ...prev, [label]: !prev[label] }));

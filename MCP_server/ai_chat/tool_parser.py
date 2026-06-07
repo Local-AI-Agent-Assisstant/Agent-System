@@ -14,7 +14,7 @@ def _normalise_tool_call(data: dict) -> dict | None:
     Accept any dict that has a recognised tool-key alias and normalise it
     to {"tool": "...", "args": {...}} so the rest of the pipeline is unchanged.
     """
-    from tools import TOOL_REGISTRY  # local import to avoid circular
+    # local import to avoid circular
     for alias in _TOOL_KEY_ALIASES:
         if alias in data:
             tool_name = data[alias]

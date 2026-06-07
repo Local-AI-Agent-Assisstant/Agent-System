@@ -4,32 +4,38 @@ import {
   Globe, Calculator, FileText, Repeat,
   Terminal, Cloud, Calendar, Lock, Cpu,
   ChevronDown, ChevronRight, Check,
+  MousePointerClick, MonitorPlay,
+  Users,
 } from "lucide-react";
 import { TOOLS } from "../../data/tools";
 import GmailModal from "./GmailModal";
+import ContactsModal from "./ContactsModal";
 import { toggleToolPermission } from "../../api/ChatApi";
 
 // ── Icon map: backendKey → Lucide icon ────────────────────────
 const TOOL_ICONS = {
-  deep_search:              Globe,
-  calculate:               Calculator,
-  get_secret_word:         Lock,
-  get_current_weather:     Cloud,
-  send_email_gmail:        Mail,
-  write_file:              FileText,
+  deep_search: Globe,
+  calculate: Calculator,
+  get_secret_word: Lock,
+  get_current_weather: Cloud,
+  send_email: Mail,
+  write_file: FileText,
   system_commands_windows: Terminal,
-  manage_planner:          Calendar,
+  manage_planner: Calendar,
+  computer_control: MousePointerClick,
+  open_program: MonitorPlay,
+  execute_routine: Repeat,
 };
 
 // ── Category definitions ──────────────────────────────────────
 const CATEGORIES = [
   {
     label: "Productivity",
-    keys: ["manage_planner", "write_file"],
+    keys: ["manage_planner", "write_file", "execute_routine"],
   },
   {
     label: "Communication",
-    keys: ["send_email_gmail"],
+    keys: ["send_email"],
   },
   {
     label: "Research",
@@ -37,11 +43,11 @@ const CATEGORIES = [
   },
   {
     label: "System",
-    keys: ["system_commands_windows", "get_current_weather", "get_secret_word"],
+    keys: ["system_commands_windows", "computer_control", "open_program"],
   },
   {
     label: "Utilities",
-    keys: ["calculate"],
+    keys: ["calculate", "get_current_weather", "get_secret_word"],
   },
 ];
 
@@ -169,16 +175,24 @@ function ToolSidebar({
   handleResetPermissions,
 }) {
   const [showGmailModal, setShowGmailModal] = useState(false);
+  const [showContactsModal, setShowContactsModal] = useState(false);
   const [search, setSearch] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
   const anyAllowed = TOOLS.some(t => allowedTools[t.backendKey]);
 
   function toggleTool(backendKey) {
+    const tool = TOOLS.find(t => t.backendKey === backendKey);
+    const keys = tool?.backendKeys || [backendKey];
     const newValue = !allowedTools[backendKey];
-    setAllowedTools(prev => ({ ...prev, [backendKey]: newValue }));
-    toggleToolPermission(backendKey, newValue, sessionId)
-      .catch(err => console.error("Permission sync failed:", err));
+    const updates = {};
+    keys.forEach(k => { updates[k] = newValue; });
+    setAllowedTools(prev => ({ ...prev, ...updates }));
+    // Sync each key to the backend
+    keys.forEach(k =>
+      toggleToolPermission(k, newValue, sessionId)
+        .catch(err => console.error("Permission sync failed:", err))
+    );
   }
 
   function toggleAllowAll() {
@@ -257,6 +271,21 @@ function ToolSidebar({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Contacts */}
+            <button
+              onClick={() => setShowContactsModal(true)}
+              data-tooltip="Contacts"
+              data-tooltip-pos="bottom"
+              className={
+                "p-1.5 rounded-lg transition text-[11px] font-medium " +
+                (isDark
+                  ? "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+                  : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-700")
+              }
+            >
+              <Users size={14} />
+            </button>
+
             {/* Gmail */}
             <button
               onClick={() => setShowGmailModal(true)}
@@ -399,6 +428,13 @@ function ToolSidebar({
         isDark={isDark}
         show={showGmailModal}
         onClose={() => setShowGmailModal(false)}
+      />
+
+      {/* Contacts Modal */}
+      <ContactsModal
+        isDark={isDark}
+        show={showContactsModal}
+        onClose={() => setShowContactsModal(false)}
       />
     </>
   );

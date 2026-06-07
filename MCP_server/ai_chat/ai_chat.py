@@ -9,7 +9,7 @@ All heavy lifting is delegated to focused sibling modules:
   - routine_engine → multi-step routine state & reminder messages
 """
 
-import copy
+
 import json
 import os
 import re
@@ -25,6 +25,7 @@ from tools import (
 from .model_client import call_model
 from .tool_parser import extract_tool_call
 from .tool_executor import maybe_run_tool
+
 from .routine_engine import (
     build_routine_reminder,
     pick_up_routine_state,
@@ -64,7 +65,7 @@ _TOOL_INSTRUCTIONS = {
         "If the result has a 'download_url' field, include it as [filename](download_url). "
         "Copy the URL exactly as-is. Do not invent or change any URL."
     ),
-    "send_email_gmail": (
+    "send_email": (
         "Reply with one short sentence confirming the email was sent successfully."
     ),
     "calculate": (
@@ -107,6 +108,50 @@ _DEFAULT_TOOL_INSTRUCTION = (
 # Tools that are force-dispatched directly without asking the AI for args
 _DIRECT_FORCE_TOOLS = {"deep_search","deep_think"}
 
+# ── Contextual query expansion for vague follow-up searches ───────────────────
+_FOLLOWUP_PHRASES = [
+    "tell me more", "more about", "more info", "more information",
+    "more details", "more on that", "elaborate", "expand on",
+    "give me more", "what else", "show me more", "continue",
+    "and what about", "what about that", "go on", "keep going",
+]
+_VAGUE_REFS = {"that", "this", "it", "them", "those", "these", "there"}
+
+def _is_vague_query(query: str) -> bool:
+    """Return True if the query is a vague follow-up that needs conversation context."""
+    q = query.lower().strip()
+    if any(phrase in q for phrase in _FOLLOWUP_PHRASES):
+        return True
+    words = q.split()
+    return len(words) <= 6 and bool(_VAGUE_REFS & set(words))
+
+def _contextual_search_query(query: str, history: list) -> str:
+    """
+    Rewrite a vague follow-up search query using conversation history.
+    Walks history backwards to find the last substantive user query and
+    prepends it as context so the search engine receives a meaningful query.
+    """
+    if not _is_vague_query(query):
+        return query
+
+    # Walk backwards through history (skip current message — it's the vague query)
+    for msg in reversed(history[:-1]):
+        if msg.get("role") != "user":
+            continue
+        content = (msg.get("content") or "").strip()
+        # Skip empty, tool-result injections, or other vague follow-ups
+        if not content or "--- TOOL RESULT ---" in content:
+            continue
+        if _is_vague_query(content):
+            continue  # skip chained vague queries, keep looking
+        # Found a substantive past query — use it as the base context
+        base = content[:120]  # cap to avoid excessively long queries
+        expanded = f"{base} — {query}"
+        print(f"[Deep Search] Query expanded: '{query}' → '{expanded}'", flush=True)
+        return expanded
+
+    print(f"[Deep Search] No context found for vague query: '{query}'", flush=True)
+    return query  # no useful context found, use as-is
 
 class AiChat:
 
@@ -118,6 +163,7 @@ class AiChat:
         self.always_allow_tools: set = set()
         self._pending_permissions: dict = {}
         self.full_access_until: float = 0
+        self.is_aborted: bool = False
 
         if system_prompt:
             self.messages.append({"role": "system", "content": system_prompt})
@@ -155,7 +201,7 @@ class AiChat:
             "what tools do you",
             "how do you work",
             "what are your capabilities",
-            "who made you"
+            "who made you",
         ]
         return any(pat in p for pat in identity_patterns)
 
@@ -164,9 +210,7 @@ class AiChat:
         return call_model(messages, on_event=on_event, is_interrupted=is_interrupted)
 
     def _maybe_run_tool(self, tool_call: dict, email=None, password=None, on_event=None, routine_memory=None, email_allowed=None, is_interrupted=None, enabled_skills=None):
-        """Execute a requested tool if possible, returning its output data."""
-        from .tool_executor import maybe_run_tool
-        
+        """Execute a requested tool if possible, returning its output data."""        
         effective_email_allowed = self._email_allowed if email_allowed is None else email_allowed
         
         return maybe_run_tool(
@@ -195,6 +239,12 @@ class AiChat:
         - Executes tools ONLY on pure JSON
         - Forces a final plain-text answer
         """
+        self.is_aborted = False
+        original_is_interrupted = is_interrupted
+        def _check_interrupted():
+            return getattr(self, "is_aborted", False) or (original_is_interrupted and original_is_interrupted())
+        is_interrupted = _check_interrupted
+
         session_messages = list(self.messages)
 
         # 1) Add user message only if it's not empty
@@ -212,6 +262,21 @@ class AiChat:
                 session_messages.insert(insert_idx, {"role": "system", "content": IDENTITY_CONTEXT})
             except ImportError:
                 pass
+
+        # ── INJECT DYNAMIC ROUTINES CONTEXT ──
+        try:
+            from tools.routines import load_routines
+            routines = load_routines()
+            if routines:
+                routine_lines = []
+                for name, data in routines.items():
+                    desc = data.get("description", "No description")
+                    routine_lines.append(f"- '{name}': {desc}")
+                routine_context = "AVAILABLE SAVED ROUTINES:\n" + "\n".join(routine_lines) + "\n(You can use execute_routine with any of these exact names.)"
+                insert_idx = 1 if (session_messages and session_messages[0].get("role") == "system") else 0
+                session_messages.insert(insert_idx, {"role": "system", "content": routine_context})
+        except Exception:
+            pass
 
         # Avoid using the email tool if the user did not ask
         self._email_allowed = False
@@ -240,7 +305,10 @@ class AiChat:
                 if forced_tool_name == "deep_think":
                     forced_tool_call = {"tool": "deep_think", "args": {"goal": actual_query}}
                 else:
-                    forced_tool_call = {"tool": forced_tool_name, "args": {"query": actual_query}}
+                    # Expand vague follow-up queries ("tell me more about that") using
+                    # conversation history so search engines receive meaningful queries.
+                    search_query = _contextual_search_query(actual_query, self.messages)
+                    forced_tool_call = {"tool": forced_tool_name, "args": {"query": search_query}}
 
 
         # ──────────────────────────────────────────────────────────────────
@@ -252,12 +320,9 @@ class AiChat:
             if is_interrupted and is_interrupted():
                 return {"response": "Interrupted by user."}
 
-            # ── If a forced tool was set (from the + skill picker), use it on round 0
             if forced_tool_call is not None and round_num == 0:
                 tool_call = forced_tool_call
                 forced_tool_call = None  # only force once
-                if on_event:
-                    on_event("tool", tool_call.get("tool"))
             elif _routine_state:
                 # ROUTINE EXECUTION MODE: Bypass AI entirely
                 step_idx = _routine_state.get("completed", 0)
@@ -267,62 +332,61 @@ class AiChat:
                         "tool": expected["tool"],
                         "args": expected.get("args", {})
                     }
-                    if on_event:
-                        on_event("tool", tool_call["tool"])
             else:
                 # Notify UI: thinking
                 if on_event:
                     on_event("thinking", None)
 
-                # Live stream the <think> block if present, but buffer the rest to hide raw JSON tool calls.
-                # Live stream the <think> block if present, and stream plain text answers.
-                # Buffer the start of the post-think text to detect if it's a JSON tool call (and hide it if so).
-                state = {"in_think": False, "full_reply": "", "is_json": None, "buffer": ""}
-                
+                # ── Streaming filter ──────────────────────────────────────────────────────
+                # Accumulates the full model reply and streams only the *new* visible delta
+                # to the frontend each time a token arrives.
+                #
+                # Rules:
+                #  1. Anything inside <think>…</think> is suppressed (reasoning is shown in
+                #     the collapsible badge via data.response; not during live streaming).
+                #  2. If the first visible text starts with { or [ it's a JSON tool call –
+                #     suppress it entirely (the tool result is fed back as the next round).
+                #  3. Everything else is streamed character-by-character as a delta.
+                #
+                # Works correctly even when Ollama emits multi-char tokens that contain both
+                # the opening and closing think tags in a single chunk.
+                # ─────────────────────────────────────────────────────────────────────────
+                state = {"full_reply": "", "is_json": None, "_sent": 0}
+
                 def live_stream_think(event, char):
-                    if event == "chunk":
-                        state["full_reply"] += char
-                        
-                        if "<think>" in state["full_reply"] and "</think>" not in state["full_reply"]:
-                            if not state["in_think"]:
-                                state["in_think"] = True
-                                if on_event:
-                                    on_event("chunk", "<think>")
-                                    after = state["full_reply"].split("<think>", 1)[1]
-                                    if after:
-                                        on_event("chunk", after)
-                            else:
-                                if on_event:
-                                    on_event("chunk", char)
-                            return
-                            
-                        if "</think>" in state["full_reply"] and state["in_think"]:
-                            state["in_think"] = False
-                            if on_event:
-                                on_event("chunk", char)
-                            return
-                            
-                        current_text = state["full_reply"].split("</think>", 1)[1] if "</think>" in state["full_reply"] else state["full_reply"]
-                        
-                        if state["is_json"] is None:
-                            stripped = current_text.lstrip()
-                            if not stripped:
-                                state["buffer"] += char
-                                return
-                            
-                            if stripped.startswith('{') or stripped.startswith('['):
-                                state["is_json"] = True
-                            else:
-                                state["is_json"] = False
-                                if on_event:
-                                    on_event("chunk", state["buffer"] + char)
-                                state["buffer"] = ""
-                            return
-                            
-                        if not state["is_json"]:
-                            if on_event:
-                                on_event("chunk", char)
-                                    
+                    if event != "chunk":
+                        return
+                    state["full_reply"] += char
+                    full = state["full_reply"]
+
+                    # ── Determine the "visible" portion of the reply ───────────────────
+                    # Strip out anything inside <think>…</think>.
+                    think_start = full.find("<think>")
+                    if think_start >= 0:
+                        think_end = full.find("</think>")
+                        if think_end < 0:
+                            return  # still inside think block — suppress all tokens
+                        # Think block closed; only the text *after* </think> is visible.
+                        current_text = full[think_end + 8:]   # 8 == len("</think>")
+                    else:
+                        current_text = full                   # no think block; everything is visible
+
+                    # ── Detect JSON tool call on first visible content ─────────────────
+                    if state["is_json"] is None:
+                        stripped = current_text.lstrip()
+                        if not stripped:
+                            return   # still in preamble whitespace; nothing to classify yet
+                        state["is_json"] = stripped[0] in ('{', '[')
+
+                    if state["is_json"]:
+                        return  # JSON tool call — suppress entirely
+
+                    # ── Stream only the newly arrived delta ───────────────────────────
+                    delta = current_text[state["_sent"]:]
+                    if delta and on_event:
+                        on_event("chunk", delta)
+                    state["_sent"] = len(current_text)
+
                 reply = self._call_model(session_messages, on_event=live_stream_think, is_interrupted=is_interrupted)
 
                 if is_interrupted and is_interrupted():
@@ -330,8 +394,9 @@ class AiChat:
 
                 # Retry once if model returned empty output
                 if not self._nonempty(reply):
-                    state["in_think"] = False
                     state["full_reply"] = ""
+                    state["is_json"] = None
+                    state["_sent"] = 0
                     reply = self._call_model(session_messages, on_event=live_stream_think, is_interrupted=is_interrupted)
 
                 if is_interrupted and is_interrupted():
@@ -352,7 +417,7 @@ class AiChat:
                 # No tool → this IS the final plain-text answer.
                 # Now stream the REST of the response (excluding the think block) so the UI shows real-time typing.
                 if tool_call is None:
-                    clean_reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL | re.IGNORECASE).strip()
+
                     # COMMIT TO HISTORY
                     if prompt_added:
                         self.messages.append({"role": "user", "content": prompt})
@@ -406,17 +471,8 @@ class AiChat:
                         "sources": sources,
                     }
 
-                # Notify UI: which tool(s) are about to run
-                if on_event:
-                    tools_to_announce = []
-                    if "tool" in tool_call:
-                        tools_to_announce = [tool_call.get("tool")]
-                    elif "tools" in tool_call:
-                        tools_to_announce = [
-                            t.get("tool") for t in tool_call.get("tools", []) if t.get("tool")
-                        ]
-                    for tool_name_hint in tools_to_announce:
-                        on_event("tool", tool_name_hint)
+                # Tool(s) are about to run.
+                # The UI will be notified directly by tool_executor.py right before execution.
 
             # Run tool(s)
             routine_memory = None
@@ -484,7 +540,7 @@ class AiChat:
                     preview["attachments"] = attachments
                     return {
                         "response": "",
-                        "tool": "send_email_gmail",
+                        "tool": "send_email",
                         "email_preview": preview,
                         "files": created_files,
                     }
@@ -498,7 +554,7 @@ class AiChat:
                         fn = res["filename"]
                         r["download_url"] = f"http://127.0.0.1:8000/api/download/{fn}"
 
-                elif r.get("tool") == "send_email_gmail":
+                elif r.get("tool") == "send_email":
                     attachment = (r.get("args") or {}).get("attachment")
                     if attachment:
                         fn = os.path.basename(str(attachment))
@@ -549,7 +605,7 @@ class AiChat:
                         preview["attachments"] = attachments
                         return {
                             "response": "",
-                            "tool": "send_email_gmail",
+                            "tool": "send_email",
                             "email_preview": preview,
                             "files": created_files,
                         }
@@ -613,6 +669,21 @@ class AiChat:
                 temp_messages.insert(insert_idx, {"role": "system", "content": IDENTITY_CONTEXT})
             except ImportError:
                 pass
+
+        # ── INJECT DYNAMIC ROUTINES CONTEXT ──
+        try:
+            from tools.routines import load_routines
+            routines = load_routines()
+            if routines:
+                routine_lines = []
+                for name, data in routines.items():
+                    desc = data.get("description", "No description")
+                    routine_lines.append(f"- '{name}': {desc}")
+                routine_context = "AVAILABLE SAVED ROUTINES:\n" + "\n".join(routine_lines) + "\n(You can use execute_routine with any of these exact names.)"
+                insert_idx = 1 if (temp_messages and temp_messages[0].get("role") == "system") else 0
+                temp_messages.insert(insert_idx, {"role": "system", "content": routine_context})
+        except Exception:
+            pass
 
         reply = self._call_model(temp_messages)
 
@@ -686,7 +757,7 @@ def start_chat():
                 print("\n\033[90m[AI is thinking...]\033[0m\n", end="", flush=True)
 
         print("Ai: ", end="", flush=True)
-        reply = chat.ask(user_input, on_event=console_event)
+        chat.ask(user_input, on_event=console_event)
         print("\n")
 
 

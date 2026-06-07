@@ -1,6 +1,40 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./VoiceChatModal.css";
 
+// ── Rich renderer for a single reasoning entry ─────────────────────────────
+// Detects "Using tool_name(args)" format and applies styled rendering
+function VoiceReasoningEntry({ text, isActive }) {
+  const baseColor = isActive ? "#a78bfa" : "#94a3b8";
+  const usingMatch = text.match(/^Using\s+([^(]+)(\(.*\))?$/);
+  if (usingMatch) {
+    const toolName = usingMatch[1].trim();
+    const params = usingMatch[2] || null;
+    return (
+      <div style={{ marginBottom: "0.5rem", display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px" }}>
+        <span style={{ color: baseColor }}>Using</span>
+        <span style={{ color: "#34d399", fontFamily: "monospace", fontWeight: "600", fontSize: "12.5px" }}>
+          {toolName}
+        </span>
+        {params && (
+          <span style={{
+            fontFamily: "monospace",
+            fontSize: "11px",
+            padding: "1px 6px",
+            borderRadius: "4px",
+            background: "rgba(255,255,255,0.06)",
+            color: "#94a3b8",
+          }}>
+            {params}
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: "0.5rem", color: baseColor }}>{text}</div>
+  );
+}
+
 /**
  * VoiceChatModal — Premium voice chat overlay.
  *
@@ -56,6 +90,8 @@ function VoiceChatModalInner({
   reasoningHistory = [],
   voiceHistory = [],
   voiceError = "",
+  isMuted = false,
+  toggleMute,
   voiceInterruptEnabled = false,
   toggleVoiceInterrupt,
   onClose,
@@ -112,10 +148,13 @@ function VoiceChatModalInner({
     speaking: "Speaking",
   };
 
-  const statusLabel = statusMap[voiceState] || "...";
+  const statusLabel = isMuted ? "🔇 Microphone Muted" : (statusMap[voiceState] || "...");
   const isActive = voiceState !== "idle";
   const showThinkingPanel = showThinking;
   const canInterrupt = ["thinking", "responding", "speaking"].includes(voiceState);
+
+  const safeHistory = Array.isArray(reasoningHistory) ? reasoningHistory.filter(Boolean) : [];
+  const safeCurrent = Array.isArray(agentReasoning) ? agentReasoning.filter(Boolean) : (typeof agentReasoning === 'string' && agentReasoning ? [agentReasoning] : []);
 
   return (
     <div className="vcm-overlay">
@@ -183,7 +222,7 @@ function VoiceChatModalInner({
           title={voiceState === "listening" ? "Click to force listen" : ""}
         >
           <div className={`vcm-orb-ring ${isActive ? "active" : ""}`} />
-          <div className={`vcm-orb ${voiceState || "idle"}`} />
+          <div className={`vcm-orb ${isMuted ? "muted" : (voiceState || "idle")}`} />
         </div>
       </div>
 
@@ -231,34 +270,30 @@ function VoiceChatModalInner({
             <div className="vcm-think-stream">
               <div className="vcm-think-label">Reasoning Log:</div>
               <div className="vcm-think-preview">
-                {(() => {
-                  try {
-                    const safeHistory = Array.isArray(reasoningHistory) ? reasoningHistory.filter(Boolean) : [];
-                    const safeCurrent = Array.isArray(agentReasoning) ? agentReasoning.filter(Boolean) : (typeof agentReasoning === 'string' && agentReasoning ? [agentReasoning] : []);
-                    
-                    if (safeHistory.length === 0 && safeCurrent.length === 0) {
-                      return <span style={{ opacity: 0.5 }}>(Model did not provide reasoning)</span>;
-                    }
-
+                {safeHistory.map((item, i) => {
+                  if (Array.isArray(item)) {
+                    if (item.length === 0) return null;
                     return (
-                      <>
-                        {safeHistory.map((r, i) => (
-                          <div key={`hist-${i}`} style={{ marginBottom: "0.5rem", color: "#94a3b8" }}>{String(r)}</div>
-                        ))}
-                        {safeCurrent.map((r, i) => {
-                          const isActive = i === safeCurrent.length - 1 && voiceState === "thinking";
-                          return (
-                            <div key={`curr-${i}`} style={{ marginBottom: "0.5rem", color: isActive ? "#a78bfa" : "#94a3b8" }}>
-                              {String(r)}
-                            </div>
-                          );
-                        })}
-                      </>
+                      <div key={`hist-grp-${i}`} className="vcm-history-group" style={{ marginBottom: "0.75rem" }}>
+                        <div className="vcm-history-summary" style={{ color: "#94a3b8", fontSize: "0.8rem", userSelect: "none", display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.25rem 0" }}>
+                          <span style={{flex: 1}}>Operation completed ({item.length} steps)</span>
+                        </div>
+                        <div className="vcm-history-group-content" style={{ paddingLeft: "0.5rem", borderLeft: "2px solid rgba(148, 163, 184, 0.2)", marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                          {item.map((r, j) => (
+                            <VoiceReasoningEntry key={`hist-${i}-${j}`} text={String(r)} isActive={false} />
+                          ))}
+                        </div>
+                      </div>
                     );
-                  } catch (e) {
-                    return <span style={{ color: "#ff4444" }}>Error displaying reasoning log</span>;
                   }
-                })()}
+                  return <VoiceReasoningEntry key={`hist-${i}`} text={String(item)} isActive={false} />;
+                })}
+                {safeCurrent.map((r, i) => {
+                  const isActive = i === safeCurrent.length - 1 && voiceState === "thinking";
+                  return (
+                    <VoiceReasoningEntry key={`curr-${i}`} text={String(r)} isActive={isActive} />
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -267,6 +302,33 @@ function VoiceChatModalInner({
 
       {/* Bottom controls */}
       <div className="vcm-controls">
+        {/* Mute button */}
+        <button
+          className={`vcm-mute ${isMuted ? "muted" : ""}`}
+          onClick={toggleMute}
+          title={isMuted ? "Unmute microphone" : "Mute microphone"}
+        >
+          {isMuted ? (
+            /* Mic off icon */
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.12 1.5-.34 2.18" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          ) : (
+            /* Mic on icon */
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="1" width="6" height="11" rx="3" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          )}
+          <span>{isMuted ? "Unmute" : "Mute"}</span>
+        </button>
+
         {canInterrupt && (
           <button className="vcm-interrupt" onClick={onStopSpeaking} title="Interrupt AI">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3" /></svg>

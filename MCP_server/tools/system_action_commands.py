@@ -289,7 +289,7 @@ def close_program(program_name: str = "", program: str = "") -> dict:
         try:
             # /F forces the process to close
             # /IM specifies the image name
-            output = subprocess.check_output(
+            subprocess.check_output(
                 ["taskkill", "/F", "/IM", process],
                 text=True, creationflags=subprocess.CREATE_NO_WINDOW, stderr=subprocess.STDOUT
             )

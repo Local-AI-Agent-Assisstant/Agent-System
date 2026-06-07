@@ -12,7 +12,7 @@
 
 export const TOOLS = [
   {
-    name: "Deep Search",
+    name: "Web Search",
     backendKey: "deep_search",
     description: "Search the web for up-to-date info and cited sources.",
     suggestions: [
@@ -50,7 +50,7 @@ export const TOOLS = [
 
   {
     name: "Send Email",
-    backendKey: "send_email_gmail",
+    backendKey: "send_email",
     description: "Send an email using Gmail, with optional attachment.",
     suggestions: [
       "Send an email",
@@ -104,6 +104,45 @@ export const TOOLS = [
     suggestions: [
       "Reveal the secret word",
       "Give me the hidden word",
+    ],
+  },
+
+  {
+    name: "Computer Control",
+    backendKey: "computer_control",
+    description: "Control your desktop — read screen elements, click buttons, and type text.",
+    suggestions: [
+      "Read what is currently on my screen",
+      "Click the send button",
+      "Type 'Hello world' into the search bar",
+      "Get my clipboard content",
+      "Read the active window and find the submit button",
+    ],
+  },
+
+  {
+    name: "System Actions",
+    backendKey: "open_program",
+    backendKeys: ["open_program", "close_program"],
+    description: "Open or close applications, files, and folders on your system.",
+    suggestions: [
+      "Open Calculator",
+      "Open Chrome",
+      "Open my documents folder",
+      "Launch Notepad",
+      "Close Microsoft Word",
+      "Close Chrome",
+    ],
+  },
+
+  {
+    name: "Routine Runner",
+    backendKey: "execute_routine",
+    description: "Execute saved multi-step routines automatically.",
+    suggestions: [
+      "Run my morning routine",
+      "Execute the cleanup routine",
+      "Run the system check routine",
     ],
   },
 ];

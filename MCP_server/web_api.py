@@ -5,24 +5,25 @@ logger = logging.getLogger(__name__)
 import tempfile
 import threading
 import time
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi import HTTPException
 import asyncio
 import json
 import base64
-import struct
+
 import smtplib
+from typing import List
 import config
 import importlib
-import numpy as np
+
 import pytesseract
 
 
 # reuse your existing code
 from ai_chat import AiChat
-from tools import TOOL_SYSTEM_PROMPT, send_email_gmail
+from tools import TOOL_SYSTEM_PROMPT
 from pydantic import BaseModel
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -183,6 +184,12 @@ async def api_chat(
             return chat_session.ask(message, email=email, password=password)
     reply = await asyncio.to_thread(safe_ask)
     return reply
+
+@app.post("/api/chat/abort")
+async def api_chat_abort(session_id: str = Form("default_user")):
+    chat_session = get_chat_session(session_id)
+    chat_session.is_aborted = True
+    return {"ok": True}
 
 
 @app.post("/api/chat/stream")
@@ -421,7 +428,7 @@ async def ws_voice(websocket: WebSocket, session_id: str = "default_user"):
 @app.post("/api/file")
 async def api_file(
     instruction: str = Form(...),
-    file: UploadFile = File(...),
+    file: List[UploadFile] = File(...),
     session_id: str = Form("default_user")
 ):
     """
@@ -430,32 +437,54 @@ async def api_file(
     from config import SAFE_WRITE_DIR
     os.makedirs(SAFE_WRITE_DIR, exist_ok=True)
     
-    # 1. Save the file permanently into the safe dir instead of a temporary deleted folder
-    safe_filename = os.path.basename(file.filename)
-    save_path = os.path.join(SAFE_WRITE_DIR, safe_filename)
-    
     MAX_FILE_SIZE = 10 * 1024 * 1024
-    
-    content_bytes = await file.read()
+    MAX_TOTAL_SIZE = 20 * 1024 * 1024
+    MAX_FILES = 3
 
-    if len(content_bytes) > MAX_FILE_SIZE:
-        return {"error": "File too large. Maximum size is 10MB."}
-    
-    with open(save_path, "wb") as f:
-        f.write(content_bytes)
+    if len(file) > MAX_FILES:
+        return {"error": f"Too many files uploaded. Maximum is {MAX_FILES}."}
+
+    total_size = 0
+    file_contents = []
+
+    for f in file:
+        content_bytes = await f.read()
+        total_size += len(content_bytes)
+
+        if len(content_bytes) > MAX_FILE_SIZE:
+            return {"error": f"File '{f.filename}' is too large. Maximum size is 10MB."}
+        if total_size > MAX_TOTAL_SIZE:
+            return {"error": "Total upload size exceeds 20MB limit."}
+        
+        file_contents.append((f.filename, content_bytes))
+
+    combined_content = ""
+    saved_paths = []
 
     try:
-        # 2. Extract context for the AI
-        content = extract_text_from_upload(save_path, safe_filename, max_chars=12000, max_pages=3)
+        for filename, content_bytes in file_contents:
+            safe_filename = os.path.basename(filename)
+            save_path = os.path.join(SAFE_WRITE_DIR, safe_filename)
+            
+            with open(save_path, "wb") as disk_file:
+                disk_file.write(content_bytes)
+            
+            saved_paths.append(save_path)
 
-        # 3. Specifically tell the AI where the file went so it can attach it to emails!
+            # Extract context for the AI
+            content = extract_text_from_upload(save_path, safe_filename, max_chars=12000, max_pages=3)
+            
+            combined_content += f"[FILE: {safe_filename}]\n{content}\n\n"
+
+        # Specifically tell the AI where the files went so it can attach them to emails
+        paths_str = "\n".join([f"- {p}" for p in saved_paths])
         prompt = (
             f"USER REQUEST: {instruction}\n\n"
-            f"ORIGINAL FILENAME: {safe_filename}\n"
-            f"FILE SAVED AT: {save_path}\n"
-            "FILE CONTENT (preview, may be truncated):\n"
-            f"{content}\n\n"
-            "IMPORTANT: This file has been securely saved locally. If the user asks you to email it, you can pass the exact FILE SAVED AT path directly into the attachment parameter of your email tool!"
+            "FILES SAVED AT (Internal Use Only):\n"
+            f"{paths_str}\n\n"
+            "FILES CONTENT (preview, may be truncated):\n"
+            f"{combined_content}\n"
+            "IMPORTANT: When responding to the user, ONLY mention the file names and types. DO NOT output or mention the local file paths. However, if the user asks you to email a file, you MUST use the exact FILE SAVED AT path internally in the attachment parameter of your email tool!"
         )
 
         chat_session = get_chat_session(session_id)
@@ -732,6 +761,38 @@ async def update_routine_prompt(name: str, prompt: str = Form(...)):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+class RoutineUpdateModel(BaseModel):
+    name: str
+    description: str
+    prompt: str = ""
+    steps: list = []
+
+@app.put("/api/routines/{old_name}")
+async def update_routine_full(old_name: str, data: RoutineUpdateModel):
+    try:
+        from tools.routines import load_routines, save_routines
+        routines = load_routines()
+        
+        if old_name not in routines:
+            return {"ok": False, "error": "Routine not found"}
+        
+        # If name is changed, delete old key
+        if data.name != old_name:
+            if data.name in routines:
+                return {"ok": False, "error": "A routine with the new name already exists."}
+            del routines[old_name]
+            
+        routines[data.name] = {
+            "description": data.description,
+            "prompt": data.prompt,
+            "steps": data.steps
+        }
+        
+        save_routines(routines)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.delete("/api/routines/{name}")
 def delete_routine(name: str):
     try:
@@ -744,3 +805,69 @@ def delete_routine(name: str):
         return {"ok": False, "error": "Routine not found"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+# -------------------------------------------------------- Contacts ---------------------------------------------------------
+import contacts_service
+
+class ContactCreate(BaseModel):
+    full_name: str = ""
+    aliases: list = []
+    emails: list = []
+    phones: list = []
+    whatsapp: list = []
+    notes: str = ""
+    custom_fields: dict = {}
+
+class ContactUpdate(BaseModel):
+    full_name: str = ""
+    aliases: list = []
+    emails: list = []
+    phones: list = []
+    whatsapp: list = []
+    notes: str = ""
+    custom_fields: dict = {}
+
+@app.get("/api/contacts")
+def get_contacts():
+    try:
+        contacts = contacts_service.load_contacts()
+        return {"ok": True, "contacts": contacts}
+    except Exception as e:
+        return {"ok": False, "contacts": [], "error": str(e)}
+
+@app.post("/api/contacts")
+def create_contact(data: ContactCreate):
+    try:
+        contact = contacts_service.add_contact(data.dict())
+        return {"ok": True, "contact": contact}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.put("/api/contacts/{contact_id}")
+def update_contact_endpoint(contact_id: str, data: ContactUpdate):
+    try:
+        updated = contacts_service.update_contact(contact_id, data.dict())
+        if updated is None:
+            return {"ok": False, "error": "Contact not found"}
+        return {"ok": True, "contact": updated}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.delete("/api/contacts/{contact_id}")
+def delete_contact_endpoint(contact_id: str):
+    try:
+        deleted = contacts_service.delete_contact(contact_id)
+        if not deleted:
+            return {"ok": False, "error": "Contact not found"}
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/api/contacts/search")
+def search_contacts(q: str = ""):
+    try:
+        matches = contacts_service.find_contact(q)
+        return {"ok": True, "contacts": matches}
+    except Exception as e:
+        return {"ok": False, "contacts": [], "error": str(e)}
+

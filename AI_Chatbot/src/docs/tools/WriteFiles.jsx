@@ -1,5 +1,6 @@
 import { FileEdit, FilePlus, FolderOpen, ArrowRight, AlertCircle, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
+import FilePreview from "../../assets/file-preview.png";
 
 const CAPABILITIES = [
     { icon: FilePlus, title: "Create Files", desc: "Create new local files using assistant-generated content." },
@@ -29,24 +30,6 @@ export default function WriteFiles() {
             </section>
 
             <section>
-                <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Tool Functions</h2>
-                <div className="rounded-xl border border-zinc-200 dark:border-neutral-800 bg-zinc-100 dark:bg-neutral-800/30 overflow-hidden">
-                    <div className="grid grid-cols-[1fr_2fr] text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-neutral-500 px-5 py-3 border-b border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-                        <span>Function</span><span className="pl-6">Description</span>
-                    </div>
-                    {[
-                        { name: "Read File", desc: "Read the full content of a local file and return it as text." },
-                        { name: "Write File", desc: "Write or overwrite a file at a given path with the provided content." },
-                    ].map(({ name, desc }) => (
-                        <div key={name} className="grid grid-cols-[1fr_2fr] items-center px-5 py-3.5 border-b border-zinc-200 dark:border-neutral-800 last:border-0 bg-zinc-100 dark:bg-neutral-800/20 hover:bg-zinc-200 dark:hover:bg-neutral-800/50 transition-all gap-4">
-                            <span className="text-sm font-mono text-cyan-300">{name}</span>
-                            <span className="text-xs text-zinc-600 dark:text-neutral-400 pl-6">{desc}</span>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            <section>
                 <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Capabilities</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {CAPABILITIES.map(({ icon: Icon, title, desc }) => (
@@ -61,11 +44,29 @@ export default function WriteFiles() {
                 </div>
             </section>
 
-            {/* Interface Preview */}
+            <section>
+                <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-5">Available Functions</h2>
+                <div className="rounded-xl border border-zinc-200 dark:border-neutral-800 bg-zinc-100 dark:bg-neutral-800/30 overflow-hidden">
+                    <div className="grid grid-cols-[1fr_2fr] text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-neutral-500 px-5 py-3 border-b border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                        <span>Function</span><span className="pl-6">Description</span>
+                    </div>
+                    {[
+                        { name: "Read File", desc: "Read and return the contents of local files for contextual analysis." },
+                        { name: "Write File", desc: "Create, overwrite, or update local files using generated content." },
+                    ].map(({ name, desc }) => (
+                        <div key={name} className="grid grid-cols-[1fr_2fr] items-center px-5 py-3.5 border-b border-zinc-200 dark:border-neutral-800 last:border-0 bg-zinc-100 dark:bg-neutral-800/20 hover:bg-zinc-200 dark:hover:bg-neutral-800/50 transition-all gap-4">
+                            <span className="text-sm font-mono text-cyan-300">{name}</span>
+                            <span className="text-xs text-zinc-600 dark:text-neutral-400 pl-6">{desc}</span>
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+            {/* Files Preview */}
             <section className="space-y-3">
                 <div>
                     <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-1">
-                        Interface Preview
+                        Files Preview
                     </h2>
 
                     <p className="text-xs text-zinc-500 dark:text-neutral-500">
@@ -73,10 +74,12 @@ export default function WriteFiles() {
                     </p>
                 </div>
 
-                <div className="rounded-xl border border-dashed border-zinc-300 dark:border-neutral-700 bg-white dark:bg-neutral-900/40 h-[320px] flex items-center justify-center">
-                    <p className="text-xs text-zinc-500 dark:text-neutral-600">
-                        Preview Placeholder
-                    </p>
+                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                    <img
+                        src={FilePreview}
+                        alt="File interface preview"
+                        className="w-full object-cover cursor-pointer transition-transform duration-300 hover:scale-[1.01]"
+                    />
                 </div>
             </section>
 
@@ -109,10 +112,10 @@ export default function WriteFiles() {
 
             <section className="pt-4 border-t border-zinc-200 dark:border-neutral-800 flex flex-wrap gap-3">
                 <Link
-                    to="/docs"
+                    to="/docs/tools"
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-neutral-800 hover:bg-zinc-200 dark:hover:bg-neutral-700 border border-zinc-300 dark:border-neutral-700 text-zinc-800 dark:text-neutral-200 text-sm font-medium transition-all"
                 >
-                    Back to Introduction
+                    Back to Tools System
                 </Link>
 
                 <Link

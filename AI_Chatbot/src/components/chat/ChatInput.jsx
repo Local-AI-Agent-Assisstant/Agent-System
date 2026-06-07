@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Paperclip, Mic, Square, ArrowUp, RotateCcw, AudioLines } from "lucide-react";
-import { SkillPicker, ActiveSkillChip } from "./Skills";
+import { SkillPicker, ActiveSkillChip, SKILLS, SKILL_ICONS } from "./Skills";
 import RoutinesModal from "./RoutinesModal";
 
 function ChatInput({
   isDark,
   input,
   files,
+  setFiles,
   isTyping,
   hasInput,
   textareaRef,
@@ -16,6 +17,10 @@ function ChatInput({
   handleSend,
   handleFileClick,
   handleFileChange,
+  handleDragOver,
+  handleDrop,
+  fileError,
+  setFileError,
   isDictating,
   onToggleDictation,
   editResendTarget,
@@ -41,6 +46,11 @@ function ChatInput({
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredEmails, setFilteredEmails] = useState([]);
   const dropdownRef = useRef(null);
+
+  // ---------------- SLASH COMMANDS ----------------
+  const [showSlashDropdown, setShowSlashDropdown] = useState(false);
+  const [filteredSkills, setFilteredSkills] = useState([]);
+  const slashDropdownRef = useRef(null);
   const [isRoutinesOpen, setIsRoutinesOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
 
@@ -67,16 +77,18 @@ function ChatInput({
 
     const match = text.match(/@([\w.]*)$/);
 
-    if (match) {
-      const query = match[1].toLowerCase();
-      const filtered = emails.filter(e =>
-        e.email.toLowerCase().includes(query)
-      );
-      setFilteredEmails(filtered);
-      setShowDropdown(true);
-    } else {
-      setShowDropdown(false);
-    }
+    setTimeout(() => {
+      if (match) {
+        const query = match[1].toLowerCase();
+        const filtered = emails.filter(e =>
+          e.email.toLowerCase().includes(query)
+        );
+        setFilteredEmails(filtered);
+        setShowDropdown(true);
+      } else {
+        setShowDropdown(false);
+      }
+    }, 0);
   }, [input, emails]);
 
   // ---------------- CLICK OUTSIDE TO CLOSE DROPDOWN ----------------
@@ -92,6 +104,38 @@ function ChatInput({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showDropdown]);
+
+  // ---------------- DETECT / ----------------
+  useEffect(() => {
+    const cursor = textareaRef.current?.selectionStart || 0;
+    const text = input.slice(0, cursor);
+
+    const match = text.match(/(^|\s)\/([\w]*)$/);
+
+    setTimeout(() => {
+      if (match) {
+        const query = match[2].toLowerCase();
+        const filtered = SKILLS.filter(s =>
+          s.name.toLowerCase().includes(query) || s.backendKey.toLowerCase().includes(query)
+        );
+        setFilteredSkills(filtered);
+        setShowSlashDropdown(true);
+      } else {
+        setShowSlashDropdown(false);
+      }
+    }, 0);
+  }, [input]);
+
+  useEffect(() => {
+    if (!showSlashDropdown) return;
+    const handleClickOutside = (e) => {
+      if (slashDropdownRef.current && !slashDropdownRef.current.contains(e.target)) {
+        setShowSlashDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSlashDropdown]);
 
   // ---------------- AUTO-FOCUS ON TYPING ----------------
   useEffect(() => {
@@ -144,6 +188,32 @@ function ChatInput({
     }, 0);
   };
 
+  // ---------------- INSERT SKILL ----------------
+  const insertSkill = (skill) => {
+    let cursor = textareaRef.current?.selectionStart ?? input.length;
+    if (cursor === 0 && input.includes("/")) {
+      cursor = input.length;
+    }
+
+    const before = input.slice(0, cursor);
+    const after = input.slice(cursor);
+
+    const newBefore = before.replace(/(^|\s)\/[\w]*$/, "$1");
+
+    // Fallback if regex failed
+    const newValue = (newBefore === before && !before.match(/(^|\s)\/[\w]*$/))
+      ? before + after
+      : newBefore + after;
+
+    setShowSlashDropdown(false);
+    handleInputChange({ target: { value: newValue } });
+    setActiveTool(skill);
+
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  };
+
   // ------------------ DELETE SAVED EMAILS ---------
   const deleteEmail = (email) => {
     try {
@@ -165,36 +235,61 @@ function ChatInput({
       insertEmail(filteredEmails[0].email);
       return;
     }
+    if (e.key === "Tab" && showSlashDropdown && filteredSkills.length > 0) {
+      e.preventDefault();
+      insertSkill(filteredSkills[0]);
+      return;
+    }
     handleKeyDown(e);
   };
 
   return (
-    <div className={"px-4 py-3 " + (isDark ? "bg-neutral-900" : "bg-zinc-100")}>
+    <div 
+      className={"px-4 py-3 " + (isDark ? "bg-neutral-900" : "bg-zinc-100")}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
 
-      {(activeTool || files.length > 0) && (
-        <div className="mb-2 flex flex-wrap gap-2">
+      {(activeTool || files.length > 0 || fileError) && (
+        <div className="mb-2 flex flex-col gap-2">
+          {/* File Error Message */}
+          {fileError && (
+            <div className="text-red-500 text-xs font-medium flex items-center justify-between bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20">
+              <span>⚠️ {fileError}</span>
+              <button onClick={() => setFileError(null)} className="ml-2 opacity-60 hover:opacity-100">✕</button>
+            </div>
+          )}
 
-          {/* Active skill chip — from Skills.jsx */}
-          <ActiveSkillChip
-            isDark={isDark}
-            activeTool={activeTool}
-            setActiveTool={setActiveTool}
-          />
+          <div className="flex flex-wrap gap-2">
+            {/* Active skill chip — from Skills.jsx */}
+            <ActiveSkillChip
+              isDark={isDark}
+              activeTool={activeTool}
+              setActiveTool={setActiveTool}
+            />
 
-          {/* File chips */}
-          {files.map((file, idx) => (
-            <span
-              key={idx}
-              className={
-                "text-[11px] px-2 py-1 rounded-full border flex items-center gap-1 " +
-                (isDark
-                  ? "border-neutral-600 bg-neutral-800/60"
-                  : "border-[#d1d5db] bg-[#e5e7eb] text-[#111827]")
-              }
-            >
-              <Paperclip size={14} /> {file.name}
-            </span>
-          ))}
+            {/* File chips */}
+            {files.map((file, idx) => (
+              <span
+                key={idx}
+                className={
+                  "text-[11px] px-2.5 py-1 rounded-full border flex items-center gap-1.5 " +
+                  (isDark
+                    ? "border-neutral-600 bg-neutral-800/60"
+                    : "border-[#d1d5db] bg-[#e5e7eb] text-[#111827]")
+                }
+              >
+                <Paperclip size={14} /> 
+                <span className="truncate max-w-[150px]">{file.name}</span>
+                <button
+                  onClick={() => setFiles(files.filter((_, i) => i !== idx))}
+                  className="ml-0.5 opacity-60 hover:opacity-100 hover:text-red-400 transition-colors"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -213,6 +308,7 @@ function ChatInput({
           setActiveTool={setActiveTool}
           handleFileClick={handleFileClick}
           onRoutinesClick={() => setIsRoutinesOpen(true)}
+          disableUpload={files.length >= 3}
         />
 
         <RoutinesModal
@@ -255,7 +351,7 @@ function ChatInput({
                   ? "Listening..."
                   : editResendTarget
                     ? "Editing previous message…"
-                    : "Type your message..."
+                    : "Ask anything, use / for skills ..."
             }
             value={input}
             onChange={handleInputChange}
@@ -303,6 +399,44 @@ function ChatInput({
 
               </div>
             ))}
+          </div>
+        )}
+
+        {/* SLASH DROPDOWN */}
+        {showSlashDropdown && filteredSkills.length > 0 && (
+          <div
+            ref={slashDropdownRef}
+            className={
+              "absolute bottom-full mb-2 left-10 w-56 rounded-lg shadow-lg max-h-60 overflow-y-auto z-50 border " +
+              (isDark ? "bg-neutral-800 border-neutral-700 text-neutral-200" : "bg-white border-zinc-200 text-neutral-800")
+            }
+          >
+            <div className={"px-3 py-2 text-[10px] font-semibold uppercase tracking-wider opacity-50 border-b " + (isDark ? "border-neutral-700" : "border-zinc-200")}>
+              Skills
+            </div>
+            {filteredSkills.map((skill, i) => {
+              const IconComp = SKILL_ICONS[skill.backendKey] || SKILL_ICONS.deep_search;
+              return (
+                <div
+                  key={i}
+                  onClick={() => insertSkill(skill)}
+                  className={
+                    "flex items-center gap-2.5 px-3 py-2 text-xs cursor-pointer transition " +
+                    (isDark ? "hover:bg-neutral-700" : "hover:bg-zinc-100")
+                  }
+                >
+                  <span className={"flex items-center justify-center w-6 h-6 rounded-md " + (isDark ? "bg-neutral-700 text-neutral-300" : "bg-zinc-100 text-zinc-600")}>
+                    <IconComp size={12} />
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{skill.name}</span>
+                    <span className={"text-[10px] truncate max-w-[150px] " + (isDark ? "text-neutral-400" : "text-zinc-500")}>
+                      {skill.description}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 

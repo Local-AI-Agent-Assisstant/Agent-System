@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import { BookOpen, Zap, Brain, Mic, Wrench, Network, FolderOpen, LifeBuoy, ChevronRight, ArrowLeft, Menu, X, Globe, Calculator, Mail, Terminal, FileEdit, CloudSun } from "lucide-react";
+import { BookOpen, Zap, Brain, Mic, Wrench, Network, FolderOpen, LifeBuoy, ChevronRight, ArrowLeft, Menu, X, Globe, Calculator, Mail, Terminal, FileEdit, CloudSun, MousePointerClick, MonitorPlay } from "lucide-react";
 
 const CONTENTS_ITEMS = [
     { label: "Introduction", icon: BookOpen, to: "/docs" },
@@ -14,13 +14,15 @@ const CONTENTS_ITEMS = [
 ];
 
 const TOOLS_ITEMS = [
-    { label: "Task Planner", icon: Brain, to: "/docs/tools/task-planner" },
-    { label: "Routine", icon: Zap, to: "/docs/tools/routine" },
-    { label: "Web Search", icon: Globe, to: "/docs/tools/web-search" },
-    { label: "Calculator", icon: Calculator, to: "/docs/tools/calculator" },
-    { label: "Web Search", icon: Globe, to: "/docs/tools/web-search" },
-    { label: "Email Integration", icon: Mail, to: "/docs/tools/email" },
+    { label: "Computer Control", icon: MousePointerClick, to: "/docs/tools/computer-control" },
+    { label: "System Actions", icon: MonitorPlay, to: "/docs/tools/system-actions" },
     { label: "System Commands", icon: Terminal, to: "/docs/tools/system-commands" },
+    { label: "Web Search", icon: Globe, to: "/docs/tools/web-search" },
+    { label: "Routine", icon: Zap, to: "/docs/tools/routine" },
+    { label: "Task Planner", icon: Brain, to: "/docs/tools/task-planner" },
+    { label: "Email Integration", icon: Mail, to: "/docs/tools/email" },
+    { label: "Weather", icon: CloudSun, to: "/docs/tools/weather" },
+    { label: "Calculator", icon: Calculator, to: "/docs/tools/calculator" },
     { label: "File Management", icon: FileEdit, to: "/docs/tools/write-files" },
 ];
 
@@ -79,8 +81,12 @@ function NavSection({ label, items, onClose }) {
 
 export default function DocsLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
-
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const theme = localStorage.getItem("theme") || "dark";
+        document.documentElement.classList.toggle("dark", theme === "dark");
+    }, []);
 
     const bg = "bg-white dark:bg-neutral-900";
     const text = "text-zinc-900 dark:text-neutral-100";

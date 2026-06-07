@@ -18,7 +18,7 @@ export async function sendMessage(message, files = [], onEvent = null, sessionId
     const creds = JSON.parse(localStorage.getItem("gmail_credentials") || "{}");
     formData.append("message", message);
     formData.append("email", creds.email || "");
-    formData.append("password", "");  // password is never stored in localStorage
+    formData.append("password", creds.password || "");
     formData.append("session_id", sessionId);
     formData.append("history", JSON.stringify(history));
 
@@ -82,7 +82,7 @@ export async function sendMessage(message, files = [], onEvent = null, sessionId
   const creds = JSON.parse(localStorage.getItem("gmail_credentials") || "{}");
   form.append("instruction", message || "");
   form.append("email", creds.email || "");
-  form.append("password", "");  // password is never stored in localStorage
+  form.append("password", creds.password || "");
   form.append("session_id", sessionId);
   form.append("history", JSON.stringify(history));
   files.forEach((file) => form.append("file", file));
@@ -263,5 +263,28 @@ export async function updateRoutinePrompt(name, prompt) {
   });
   if (!res.ok) throw new Error("Failed to update routine prompt");
   return res.json();
+}
+
+export async function updateRoutine(oldName, data) {
+  const res = await fetch(`${API_BASE}/api/routines/${encodeURIComponent(oldName)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update routine");
+  return res.json();
+}
+
+export async function abortChat(sessionId = "default_user") {
+  const form = new FormData();
+  form.append("session_id", sessionId);
+  try {
+    await fetch(`${API_BASE}/api/chat/abort`, {
+      method: "POST",
+      body: form,
+    });
+  } catch { /* ignore */ }
 }
 

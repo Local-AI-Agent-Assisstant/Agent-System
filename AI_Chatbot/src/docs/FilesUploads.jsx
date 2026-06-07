@@ -1,6 +1,6 @@
 import { FolderOpen, FileText, ImageIcon, AlertCircle, ArrowRight, Upload, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
-// import UploadPreview from "../assets/upload-preview.mp4";
+import UploadPreview from "../assets/upload-files-preview.mp4";
 
 const SUPPORTED_TYPES = [
     {
@@ -19,7 +19,7 @@ const SUPPORTED_TYPES = [
     },
     {
         icon: FolderOpen,
-        label: "Structured Data",
+        label: "Data Files",
         exts: ".json, .csv",
         color: "text-emerald-400",
         bg: "bg-emerald-500/10",
@@ -72,7 +72,7 @@ export default function FilesUploads() {
                 </h1>
                 <p className="text-base text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
                     Upload documents, images, and supported files directly into conversations for analysis,
-                    summarization, visual understanding, and AI-assisted interactions.
+                    summarization, visual understanding, OCR processing, and AI-assisted interactions.
                 </p>
             </section>
 
@@ -118,13 +118,13 @@ export default function FilesUploads() {
                         </div>
                     ))}
                 </div>
-            </section>
+            </section> 
 
-            {/* Interface Preview */}
+            {/* Upload Files Preview */}
             <section className="space-y-3">
                 <div>
                     <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-1">
-                        Interface Preview
+                        Upload Files Preview
                     </h2>
 
                     <p className="text-xs text-zinc-500 dark:text-neutral-500">
@@ -143,7 +143,7 @@ export default function FilesUploads() {
                         controlsList="nodownload nofullscreen noremoteplayback"
                         className="w-full object-cover pointer-events-none transition-transform duration-300 hover:scale-[1.01]"
                     >
-                        {/* <source src={UploadPreview} type="video/mp4" /> */}
+                        <source src={UploadPreview} type="video/mp4" />
                     </video>
                 </div>
             </section>

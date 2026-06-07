@@ -27,6 +27,13 @@ const FEATURE_CARDS = [
         href: "/docs/voice",
     },
     {
+        icon: Brain,
+        color: "cyan",
+        title: "Thinker Mode",
+        desc: "Enhanced reasoning mode for complex tasks, multi-step analysis, and structured problem solving.",
+        href: "/docs/thinker",
+    },
+    {
         icon: FileText,
         color: "indigo",
         title: "File Analysis",
@@ -92,6 +99,12 @@ const COLOR_MAP = {
         border: "border-indigo-500/20",
         glow: "group-hover:shadow-indigo-500/10",
     },
+    cyan: {
+        bg: "bg-cyan-500/10 group-hover:bg-cyan-500/20",
+        icon: "text-cyan-400",
+        border: "border-cyan-500/20",
+        glow: "group-hover:shadow-cyan-500/10",
+    },
 };
 
 const OVERVIEW_ITEMS = [
@@ -118,7 +131,7 @@ const OVERVIEW_ITEMS = [
     {
         icon: Globe,
         title: "Real-Time Responses",
-        desc: "Streams responses and updates dynamically while interacting with the assistant.",
+        desc: "Streams responses dynamically during conversations and tool execution.",
     },
     {
         icon: Cpu,
@@ -170,12 +183,12 @@ export default function Introduction() {
 
                 <p className="text-lg text-zinc-600 dark:text-neutral-400 leading-relaxed max-w-2xl">
                     A local AI assistant with voice interaction, task planning, file analysis,
-                    and extensible tools powered by an MCP-based backend.
+                    and extensible tools powered by a modular AI backend..
                 </p>
 
                 <div className="flex flex-wrap gap-3">
                     <Link
-                        to="/docs/Installation"
+                        to="/docs/installation"
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
                     >
                         Get Started <ArrowRight size={15} />

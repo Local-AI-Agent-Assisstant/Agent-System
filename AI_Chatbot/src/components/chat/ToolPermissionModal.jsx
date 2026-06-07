@@ -8,8 +8,10 @@ function ToolPermissionModal({ isDark, show, toolName, toolArgs, onAllow, onDeny
   // Reset checkbox when modal hides
   useEffect(() => {
     if (!show) {
-      setDontAskAgain(false);
-      setShowFullAccessMenu(false);
+      setTimeout(() => {
+        setDontAskAgain(false);
+        setShowFullAccessMenu(false);
+      }, 0);
       if (window.electronAPI) window.electronAPI.releaseMainWindowFocus();
     } else {
       if (window.electronAPI) window.electronAPI.requestMainWindowFocus();
@@ -19,7 +21,9 @@ function ToolPermissionModal({ isDark, show, toolName, toolArgs, onAllow, onDeny
   useEffect(() => {
     if (!show) return;
 
-    setSeconds(60);
+    setTimeout(() => {
+      setSeconds(60);
+    }, 0);
 
     const interval = setInterval(() => {
       setSeconds((s) => s - 1);

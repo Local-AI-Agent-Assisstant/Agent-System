@@ -30,8 +30,13 @@ class VoiceManager:
         self._last_transcript = ""
         self._last_transcript_time = 0
         
+        self.pre_buffer = []
+        self.PRE_BUFFER_MAX = 20
+        
         self.send_queue = asyncio.Queue()
         self.loop = asyncio.get_running_loop()
+        self._muted = False
+        self._stopped = False
 
     async def connect(self):
         # Start the sender task
@@ -46,8 +51,10 @@ class VoiceManager:
                     break
                     
                 if "bytes" in message:
-                    # Audio data from microphone
-                    if not self._is_processing:
+                    # Audio data from microphone — skip if muted or stopped
+                    if self._muted or self._stopped:
+                        continue
+                    if not self._is_processing or self.voice_interrupt_enabled:
                         await self._handle_audio(message["bytes"])
                 elif "text" in message:
                     # Control messages from client
@@ -107,35 +114,72 @@ class VoiceManager:
         elif action == "toggle_voice_interrupt":
             self.voice_interrupt_enabled = data.get("enabled", False)
             logger.info(f"Voice interrupt set to {self.voice_interrupt_enabled} for {self.session_id}")
+        elif action == "mute":
+            logger.info(f"Microphone muted for {self.session_id}")
+            self._muted = True
+            self.audio_buffer.clear()
+            self.vad.reset()
+            self.pre_buffer.clear()
+        elif action == "unmute":
+            logger.info(f"Microphone unmuted for {self.session_id}")
+            self._muted = False
+            self.audio_buffer.clear()
+            self.vad.reset()
+            self.pre_buffer.clear()
+        elif action == "stop":
+            logger.info(f"Voice session fully stopped by client for {self.session_id}")
+            self._stopped = True
+            self._request_id += 1  # Cancel any in-flight processing
+            self.audio_buffer.clear()
+            self.vad.reset()
+            self.pre_buffer.clear()
+            self._is_processing = False
+            
+            # Unblock any pending permissions
+            chat = self.get_chat_session(self.session_id)
+            if hasattr(chat, "_pending_permissions"):
+                for req_id, p_data in list(chat._pending_permissions.items()):
+                    if p_data.get("allowed") is None:
+                        p_data["allowed"] = False
+                        if "event" in p_data:
+                            p_data["event"].set()
 
     async def _handle_audio(self, pcm_bytes: bytes):
         vad_state = self.vad.process_frame(pcm_bytes)
         
+        self.pre_buffer.append(pcm_bytes)
+        if len(self.pre_buffer) > self.PRE_BUFFER_MAX:
+            self.pre_buffer.pop(0)
+        
         if vad_state == "speech_start":
             self.emit("vad", state="speech_start")
             self.audio_buffer.clear()
-            self.audio_buffer.extend(pcm_bytes)
+            for f in self.pre_buffer:
+                self.audio_buffer.extend(f)
             
         elif vad_state == "speech_continue" or self.vad._is_speaking:
             self.audio_buffer.extend(pcm_bytes)
             
         elif vad_state == "speech_end":
             self.emit("vad", state="speech_end")
+            
+            is_interrupt = self._is_processing
             self._is_processing = True
             
             # Extract the audio we gathered
             audio_data = bytes(self.audio_buffer)
             self.audio_buffer.clear()
             self.vad.reset()
+            self.pre_buffer.clear()
             
             # Start processing in a background thread to unblock websocket loop
             threading.Thread(
                 target=self._process_utterance, 
-                args=(audio_data,), 
+                args=(audio_data, is_interrupt), 
                 daemon=True
             ).start()
 
-    def _process_utterance(self, audio_data: bytes):
+    def _process_utterance(self, audio_data: bytes, is_interrupt: bool = False):
         req_id = self._request_id
         
         def is_interrupted():
@@ -185,7 +229,7 @@ class VoiceManager:
 
             if is_noise_hallucination(transcript):
                 logger.info(f"Discarding hallucination (noise pattern): '{transcript}'")
-                if not is_interrupted():
+                if not is_interrupted() and not is_interrupt:
                     self.emit("idle")
                     self._is_processing = False
                 return
@@ -198,7 +242,7 @@ class VoiceManager:
             if normalize_text(transcript) == normalize_text(self._last_transcript) and len(transcript) > 0:
                 if is_recent or word_count >= 1:
                     logger.info(f"Discarding likely Whisper hallucination (repeated text): '{transcript}'")
-                    if not is_interrupted():
+                    if not is_interrupted() and not is_interrupt:
                         self.emit("idle")
                         self._is_processing = False
                     return
@@ -210,7 +254,7 @@ class VoiceManager:
             # If the AI was already processing/speaking, and voice interrupt is enabled,
             # we cancel the previous thread by incrementing the request ID, but update
             # this thread's req_id so it survives!
-            if self.voice_interrupt_enabled and self._is_processing and not is_interrupted():
+            if self.voice_interrupt_enabled and is_interrupt and not is_interrupted():
                 self._request_id += 1
                 req_id = self._request_id
                 self.emit("interrupt")
@@ -231,9 +275,26 @@ class VoiceManager:
                 elif event_type == "chunk":
                     self.emit("agent_chunk", text=str(value))
                 elif event_type == "tool":
-                    # Emit tool usage inside <think> tags so the UI routes it to the reasoning panel.
-                    # This lets the user see what tools are running during voice mode.
-                    self.emit("agent_chunk", text=f"\n<think>Running tool: {value}</think>\n")
+                    # Show tool name + params in the reasoning panel via <think> tags
+                    try:
+                        if isinstance(value, dict):
+                            tool_name = value.get("name", "")
+                            tool_args = value.get("args", {}) or {}
+                            skip = {"gmail_user", "gmail_password", "password", "on_progress"}
+                            parts = []
+                            for k, v in tool_args.items():
+                                if k in skip or callable(v):
+                                    continue
+                                sv = str(v)
+                                if len(sv) > 60:
+                                    sv = sv[:57] + "..."
+                                parts.append(f"{k}={sv}")
+                            display = f"{tool_name}({', '.join(parts)})" if parts else tool_name
+                        else:
+                            display = str(value)
+                        self.emit("agent_chunk", text=f"\n<think>Using {display}</think>\n")
+                    except Exception:
+                        pass  # never crash the voice pipeline over a display error
             
             with chat.lock:
                 # Append instruction for brief, conversational voice responses, but preserve tool strictness
@@ -290,6 +351,10 @@ class VoiceManager:
                         wf.writeframes(chunk["audio"])
                     wav_bytes = buf.getvalue()
                     
+                    # Prevent empty audio chunks from crashing HTML5 Audio playback on the frontend
+                    if len(wav_bytes) <= 44:
+                        continue
+                        
                     self.emit("tts_audio", 
                         audio=base64.b64encode(wav_bytes).decode("ascii"),
                         sentence=chunk["sentence"],

@@ -56,8 +56,7 @@ def build_routine_reminder(routine_state: dict | None) -> tuple[str, dict | None
             f"NEXT TOOL TO CALL: '{next_tool}'\n"
             f"TEMPLATE ARGUMENTS TO USE:\n{json.dumps(next_args, indent=2)}\n\n"
             f"INSTRUCTION: Output a JSON tool call for '{next_tool}'. "
-            f"Use the TEMPLATE ARGUMENTS as a guide, and populate any missing/dynamic data "
-            f"using the PREVIOUS TOOL RESULTS (History) and the USER GOAL."
+            f"Use the TEMPLATE ARGUMENTS as a guide, but YOU MUST REPLACE any placeholder variables (like <JOKE>, <MESSAGE>, <RESOLVED_CONTACT_VALUE>, etc.) with the actual real text from the PREVIOUS TOOL RESULTS (History)! Do NOT output the literal placeholder text!"
         )
 
         return reminder, routine_state
@@ -90,6 +89,7 @@ def increment_routine_step(routine_state: dict | None, tool_name: str) -> dict |
         idx = routine_state.get("completed", 0)
         if idx < len(routine_state.get("all_steps", [])):
             expected = routine_state["all_steps"][idx]["tool"]
-            if tool_name == expected:
+            # Handle capability router aliases (e.g., deep_search downgrading to quick_search)
+            if tool_name == expected or (expected == "deep_search" and tool_name == "quick_search"):
                 routine_state["completed"] += 1
     return routine_state

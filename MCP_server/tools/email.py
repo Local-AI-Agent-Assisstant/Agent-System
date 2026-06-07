@@ -14,7 +14,7 @@ from config import SAFE_WRITE_DIR
 
 #----------------send email (Gmail)-----------------------------------------------------------------------------------------
 
-def send_email_gmail(
+def send_email(
     to: str,
     subject: str,
     body: str,
@@ -31,7 +31,7 @@ def send_email_gmail(
       - OR full absolute path
     """
 
-    logger.info(f"Tool called: send_email_gmail(to={to}, subject={subject})")
+    logger.info(f"Tool called: send_email(to={to}, subject={subject})")
 
     if not gmail_user or not gmail_password:
         return "Please configure your Gmail first (email + app password)."

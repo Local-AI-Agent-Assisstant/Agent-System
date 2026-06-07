@@ -9,26 +9,38 @@ import DeleteAllChatsModal from "./DeleteAllModals";
 import EmailPreviewModal from "./EmailPreviewModal";
 import PlannerSidebar from "./PlannerSidebar";
 
+const GREETINGS = [
+  "Hello! How can I assist you today?",
+  "Welcome back! What are we working on today?",
+  "Give AI a task..",
+  "Let’s turn your ideas into action.",
+  "Your AI workspace is ready.",
+  "What would you like AI to help with today?",
+  "Upload files, explore ideas, and get things done.",
+  "Let’s make today more productive."
+];
+
 function ChatLayout({
   // state
   messages,
   input,
   files,
+  setFiles,
+  fileError,
+  setFileError,
   theme,
   isTyping,
   showScrollToBottom,
   copiedMessageId,
   isSidebarOpen,
-  deleteConversationTargetId,
   editingConversationId,
   editingConversationTitle,
   apiStatus,
   isDictating,
-  editResendTarget,
   isToolSidebarOpen,
   chatSuggestions,
+  editResendTarget,
   showDeleteAllModal,
-  permissionRequest,
   handleStop,
 
   // conversation 
@@ -60,8 +72,6 @@ function ChatLayout({
   handleCopyMessage,
   handleResend,
   retryMessage,
-  setDeleteConversationTargetId,
-  setIsSidebarOpen,
   setEditingConversationTitle,
   startEditChatTitle,
   saveChatTitle,
@@ -70,16 +80,17 @@ function ChatLayout({
   onToggleDictation,
   setIsToolSidebarOpen,
   setInput,
+  setIsSidebarOpen,
   setShowDeleteAllModal,
   handleDeleteAllChats,
-  handleAllowPermission,
-  handleDenyPermission,
   handleResetPermissions,
 
   // convo handlers
   handleNewChat,
   handleSelectChat,
   handleDeleteChat,
+  deleteConversationTargetId,
+  setDeleteConversationTargetId,
 
   resolvePendingMessage,
   allowedTools,
@@ -97,7 +108,7 @@ function ChatLayout({
   partialTranscript,
   startListening,
   stopListening,
-  
+
   // Planner
   isPlannerOpen,
   setIsPlannerOpen,
@@ -113,6 +124,8 @@ function ChatLayout({
   changeProvider,
 }) {
   const [showSuggestionsAnim, setShowSuggestionsAnim] = useState(false);
+  const [greeting] = useState(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
+
   useEffect(() => {
     if (chatSuggestions?.length > 0 && messages.length === 0 && !input) {
       const t = setTimeout(() => setShowSuggestionsAnim(true), 50);
@@ -126,7 +139,7 @@ function ChatLayout({
     try {
       const creds = JSON.parse(localStorage.getItem("gmail_credentials") || "{}");
 
-      await fetch("http://127.0.0.1:8000/api/send-email-direct", {
+      const res = await fetch("http://127.0.0.1:8000/api/send-email-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -135,6 +148,11 @@ function ChatLayout({
           password: creds.password
         }),
       });
+
+      const result = await res.json();
+      if (!result.ok) {
+        throw new Error(result.error || "Failed to send email");
+      }
 
       const extraMeta = {};
       if (data.attachment) {
@@ -151,7 +169,7 @@ function ChatLayout({
 
     } catch (err) {
       console.error("Email send failed", err);
-      resolvePendingMessage("[System Event]: The email failed to send due to an error. Briefly inform the user.");
+      resolvePendingMessage(`[System Event]: The email failed to send due to an error: ${err.message}. Briefly inform the user about the failure and ask them to check their Gmail setup (they may need to re-enter their app password).`);
     }
   };
 
@@ -227,9 +245,9 @@ function ChatLayout({
       {/* MAIN */}
       <main className="relative z-10 h-full flex flex-col">
         {!hasMessages && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-2xl font-semibold text-center opacity-80">
-              Hello! How can I assist you today?
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+            <p className="text-2xl font-semibold text-center opacity-80 pointer-events-auto">
+              {greeting}
             </p>
           </div>
         )}
@@ -331,6 +349,7 @@ function ChatLayout({
               isDark={isDark}
               input={input}
               files={files}
+              setFiles={setFiles}
               isTyping={isTyping}
               hasInput={hasInput}
               textareaRef={textareaRef}
@@ -340,6 +359,10 @@ function ChatLayout({
               handleSend={handleSend}
               handleFileClick={handleFileClick}
               handleFileChange={handleFileChange}
+              handleDragOver={handleDragOver}
+              handleDrop={handleDrop}
+              fileError={fileError}
+              setFileError={setFileError}
               isDictating={isDictating}
               onToggleDictation={onToggleDictation}
               editResendTarget={editResendTarget}
@@ -358,6 +381,16 @@ function ChatLayout({
               startListening={startListening}
               stopListening={stopListening}
             />
+
+            <div className="text-center text-sm text-zinc-500 dark:text-neutral-500 -mt-1 pb-2">
+              Learn more about the system in the{" "}
+              <a
+                href="#/docs"
+                className="text-zinc-500 dark:text-neutral-500 hover:text-purple-700 dark:hover:text-purple-400 transition-colors duration-300"
+              >
+                documentation
+              </a>.
+            </div>
 
             <DeleteChatModal
               isDark={isDark}
