@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Mail, Send, AtSign, ArrowRight, ShieldCheck, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import EmailPreview from "../../assets/email-preview.mp4";
@@ -16,6 +17,7 @@ const EXAMPLE_QUERIES = [
 ];
 
 export default function Email() {
+    const [isOpen, setIsOpen] = useState(false);
     return (
         <div className="space-y-14">
             <section className="space-y-4">
@@ -86,7 +88,10 @@ export default function Email() {
                     </p>
                 </div>
 
-                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                <div
+                    onClick={() => setIsOpen(true)}
+                    className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 cursor-pointer"
+                >
                     <video
                         autoPlay
                         loop
@@ -101,6 +106,25 @@ export default function Email() {
                     </video>
                 </div>
             </section>
+
+            {/* Fullscreen Preview */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        controls
+                        className="w-auto h-auto max-w-[85vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                    >
+                        <source src={EmailPreview} type="video/mp4" />
+                    </video>
+                </div>
+            )}
 
             <section>
                 <h2 className="text-base font-semibold text-zinc-800 dark:text-neutral-200 mb-2">Example Usage</h2>

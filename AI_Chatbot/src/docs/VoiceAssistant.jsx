@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Mic, Volume2, Brain, AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import VoicePreview from "../assets/Voice-preview.mp4";
@@ -59,6 +60,7 @@ const VOICE_STATES = [
 ];
 
 export default function VoiceAssistant() {
+    const [isOpen, setIsOpen] = useState(false);
     return (
         <div className="space-y-14">
             {/* Header */}
@@ -130,7 +132,10 @@ export default function VoiceAssistant() {
                     </p>
                 </div>
 
-                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                <div
+                    onClick={() => setIsOpen(true)}
+                    className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 cursor-pointer"
+                >
                     <video
                         autoPlay
                         loop
@@ -145,6 +150,25 @@ export default function VoiceAssistant() {
                     </video>
                 </div>
             </section>
+
+            {/* Fullscreen Preview */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        controls
+                        className="w-auto h-auto max-w-[85vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                    >
+                        <source src={VoicePreview} type="video/mp4" />
+                    </video>
+                </div>
+            )}
 
             {/* Activating voice mode */}
             <section>

@@ -38,6 +38,7 @@ const EXAMPLE_QUERIES = [
 
 export default function DeepSearch() {
     const [activePreview, setActivePreview] = useState(0);
+    const [isOpen, setIsOpen] = useState(false);
 
     const previewImages = [
         Preview1,
@@ -125,7 +126,10 @@ export default function DeepSearch() {
 
                 <div className="space-y-3">
                     {/* Main Preview */}
-                    <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                    <div
+                        onClick={() => setIsOpen(true)}
+                        className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 cursor-pointer"
+                    >
                         <video
                             key={activePreview}
                             autoPlay
@@ -170,6 +174,25 @@ export default function DeepSearch() {
                     </div>
                 </div>
             </section>
+
+            {/* Fullscreen Preview */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        controls
+                        className="w-auto h-auto max-w-[85vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                    >
+                        <source src={Preview2} type="video/mp4" />
+                    </video>
+                </div>
+            )}
 
             {/* Example queries */}
             <section>

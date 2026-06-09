@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FolderOpen, FileText, ImageIcon, AlertCircle, ArrowRight, Upload, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import UploadPreview from "../assets/upload-files-preview.mp4";
@@ -59,6 +60,7 @@ const TIPS = [
 ];
 
 export default function FilesUploads() {
+    const [isOpen, setIsOpen] = useState(false);
     return (
         <div className="space-y-14">
             {/* Header */}
@@ -118,7 +120,7 @@ export default function FilesUploads() {
                         </div>
                     ))}
                 </div>
-            </section> 
+            </section>
 
             {/* Upload Files Preview */}
             <section className="space-y-3">
@@ -132,7 +134,10 @@ export default function FilesUploads() {
                     </p>
                 </div>
 
-                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                <div
+                    onClick={() => setIsOpen(true)}
+                    className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 cursor-pointer"
+                >
                     <video
                         autoPlay
                         loop
@@ -147,6 +152,25 @@ export default function FilesUploads() {
                     </video>
                 </div>
             </section>
+
+            {/* Fullscreen Preview */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        controls
+                        className="w-auto h-auto max-w-[85vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                    >
+                        <source src={UploadPreview} type="video/mp4" />
+                    </video>
+                </div>
+            )}
 
             {/* Tips */}
             <section>

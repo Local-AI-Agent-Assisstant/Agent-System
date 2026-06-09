@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Brain, AlertCircle, ArrowRight, Lightbulb } from "lucide-react";
 import { Link } from "react-router-dom";
 import ThinkerPreview from "../assets/Thinker-preview.mp4";
@@ -26,6 +27,7 @@ const MODES = [
 ];
 
 export default function ThinkerMode() {
+    const [isOpen, setIsOpen] = useState(false);
     return (
         <div className="space-y-14">
             {/* Header */}
@@ -102,7 +104,10 @@ export default function ThinkerMode() {
                     </p>
                 </div>
 
-                <div className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                <div
+                    onClick={() => setIsOpen(true)}
+                    className="rounded-xl overflow-hidden border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 cursor-pointer"
+                >
                     <video
                         autoPlay
                         loop
@@ -117,6 +122,25 @@ export default function ThinkerMode() {
                     </video>
                 </div>
             </section>
+
+            {/* Fullscreen Preview */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+                >
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        controls
+                        className="w-auto h-auto max-w-[85vw] max-h-[85vh] object-contain rounded-xl shadow-2xl"
+                    >
+                        <source src={ThinkerPreview} type="video/mp4" />
+                    </video>
+                </div>
+            )}
 
 
             {/* Note */}
